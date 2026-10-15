@@ -242,3 +242,24 @@ textarea.inp { resize: vertical; min-height: 34px; display: block; }
   .pv-page { padding: 24px 16px; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; scroll-behavior: auto !important; } }
+
+/* ---------- dialogs, versions, account ---------- */
+.sheet-body { display: flex; flex-direction: column; gap: 10px; }
+.sheet-sub { margin: 8px 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; }
+.choice-row { display: flex; gap: 6px; align-items: center; }
+.choice-row .choice { flex: 1; min-width: 0; }
+.ver-list { display: flex; flex-direction: column; gap: 6px; }
+.ver { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--sunk); }
+.ver-main { display: flex; flex-direction: column; min-width: 0; }
+.ver-main span { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ver-tools { display: flex; flex-wrap: wrap; gap: 4px; }
+.auth { display: flex; flex-direction: column; gap: 10px; }
+.auth-err { margin: 0; color: var(--crit); font-size: 13px; min-height: 0; }
+.auth-err:empty { display: none; }
+.btn.link { border-color: transparent; background: none; color: var(--accent); text-decoration: underline; padding-inline: 4px; }
+.btn.google { width: 100%; }
+.or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+.or::before, .or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+.btn.acct { max-width: 220px; overflow: hidden; text-overflow: ellipsis; background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+#account .menu-list, .actions .menu-list { inset-inline-start: auto; inset-inline-end: 0; }
+.actions { align-items: center; }

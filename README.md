@@ -50,11 +50,44 @@ The preview on the right updates as you type; click anything in it to jump to th
 
 Text formatting inside any field: `**bold**`, `` `code` `` and `[link text](https://example.com)`.
 
-### Saving and sharing
+### Saving, versions and templates
 
-- Your manuals are saved automatically in this browser's local storage.
-- **Export config** saves a manual as a `.sop.json` file.
-- **Import config** opens one. Use these to back up, move a manual to another computer, or share it with a colleague.
+Everything is in the **Manual ▾** menu next to **New**:
+
+- **Save version… / Version history…**
+  - Save a named snapshot of the manual.
+  - Restore a snapshot, or open it as a separate copy.
+  - A version is also saved automatically each time you download the Word file.
+  - The newest 50 versions are kept.
+- **Save as template…** saves the manual so you can start new ones from it under **New → My templates**.
+- **Use these settings for my new manuals** remembers this manual's settings (language, numbering, card fields, colours, header and footer). New blank manuals can then start from them under **New → Blank manual — my default settings**.
+- **Export config / Import config** save and open a manual as a `.sop.json` file.
+
+**Where your work is saved:**
+- **Signed out:** manuals, versions, templates and default settings are saved in this browser only, using IndexedDB.
+- **Signed in:** they're saved to your account, so they follow you to any computer.
+- **First sign-in:** the account starts with the manuals and templates from that browser.
+
+## Set up sign-in (Firebase)
+
+Sign-in stays off until the site has Firebase settings. Firebase's free plan is enough. You only do this once.
+
+1. Go to <https://console.firebase.google.com>, choose **Create a project** and follow the steps. Google Analytics is not needed.
+2. **Build → Authentication → Get started**.
+   - On the **Sign-in method** tab, turn on **Email/Password**.
+   - Optionally, also turn on **Google**.
+3. **Authentication → Settings → Authorized domains**: add `minaimaher.github.io`. Also add any other address the site runs on.
+4. **Build → Firestore Database → Create database**: choose **production mode** and the location closest to your users.
+5. **Firestore Database → Rules**: replace the rules with the contents of [`firestore.rules`](firestore.rules) and choose **Publish**. These rules let each user read and write only their own data.
+6. **Project settings (⚙) → General → Your apps → Web (`</>`)**:
+   - Register an app; you don't need Firebase Hosting.
+   - Copy the `firebaseConfig` values into [`js/firebase-config.js`](js/firebase-config.js) in place of `null`.
+   - These values identify the project and are safe to publish; access is controlled by the rules.
+7. Commit the change. The **Sign in** button now offers:
+   - email and password, including **Create account** and **Forgot password?**
+   - **Continue with Google**, if you turned it on in step 2
+
+Manuals saved to an account are stored in your Firebase project's Firestore database (Google Cloud). Large manuals are split into pieces because Firestore limits each document to 1 MB.
 
 ## Import another Word manual
 
@@ -84,6 +117,9 @@ Then add `<script src="presets/my-sop.js"></script>` to `index.html` next to the
 | `js/docx-writer.js` | Builds the Word document (WordprocessingML, zipped with JSZip) |
 | `js/preview.js` | Live HTML preview |
 | `js/app.js` | Editor |
+| `js/store.js` | Saving: this browser (IndexedDB) or the signed-in user's Firebase account; sign-in |
+| `js/firebase-config.js` | Your Firebase settings (sign-in is off while this is `null`) |
+| `firestore.rules` | Firestore security rules: each user can access only their own data |
 | `presets/` | The Arabic and English CRM manuals as starting documents |
 | `tools/import_docx.py` | Converts an existing Word manual into a preset |
 | `vendor/jszip.min.js` | JSZip 3.10.1 (MIT), bundled so the site works offline |

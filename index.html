@@ -16,14 +16,12 @@
     <div class="lib">
       <select id="docSelect" class="inp" aria-label="Open manual"></select>
       <button class="btn" id="newBtn" type="button">New</button>
-      <button class="btn" id="dupBtn" type="button">Duplicate</button>
-      <button class="btn danger" id="delBtn" type="button">Delete</button>
+      <div id="manualMenu"></div>
+      <input type="file" id="importFile" accept=".json,application/json" hidden>
     </div>
     <div class="actions">
-      <label class="btn" for="importFile">Import config</label>
-      <input type="file" id="importFile" accept=".json,application/json" hidden>
-      <button class="btn" id="exportBtn" type="button">Export config</button>
       <button class="btn primary" id="docxBtn" type="button">Download Word (.docx)</button>
+      <div id="account"></div>
     </div>
   </header>
   <div class="notice" id="confirmBar" hidden>
@@ -40,17 +38,16 @@
     <nav class="pane outline" id="outline" aria-label="Outline"></nav>
     <section class="pane editor" id="editor" aria-label="Editor"></section>
     <section class="pane preview" id="previewPane" aria-label="Preview">
-      <div class="pv-bar"><span id="stats"></span><span id="saveState">Saved in this browser</span></div>
+      <div class="pv-bar"><span id="stats"></span><span id="saveState">Loading…</span></div>
       <article class="paper" id="paper"></article>
     </section>
   </main>
 </div>
 
-<div class="sheet" id="newSheet" hidden>
-  <div class="sheet-card" role="dialog" aria-labelledby="newTitle">
-    <div class="sheet-head"><h2 id="newTitle">New manual</h2><button type="button" class="btn icon" id="newClose" aria-label="Close">✕</button></div>
-    <p class="hint">Start from a blank manual or copy one of the full manuals and change it to fit your process.</p>
-    <div class="choices" id="newChoices"></div>
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <div class="sheet-head"><h2 id="sheetTitle"></h2><button type="button" class="btn icon" id="sheetClose" aria-label="Close">✕</button></div>
+    <div class="sheet-body" id="sheetBody"></div>
   </div>
 </div>
 <div class="toast" id="toast" hidden role="status"></div>
@@ -61,6 +58,8 @@
 <script src="js/model.js"></script>
 <script src="js/docx-writer.js"></script>
 <script src="js/preview.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/store.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

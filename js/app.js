@@ -33,28 +33,72 @@
   }
 
   /* ---------- state ---------- */
-  let state = load();
+  const { LocalStore, Auth } = window.SOPStore;
+  let store = new LocalStore("guest");     // this browser, or the signed-in user's account
+  let user = null;
+  let prefs = {};
+  let state = { docs: [], current: null };
   let sel = { kind: "settings" };          // {kind:'settings'|'cover'|'section'|'card', sec, card}
   const openSecs = new Set();
+  const dirty = new Set();                 // manuals changed since the last save
 
-  function load() {
-    try {
-      const raw = localStorage.getItem(KEY);
-      if (raw) { const st = JSON.parse(raw); if (st.docs && st.docs.length) { st.docs = st.docs.map(M.normalize); return st; } }
-    } catch (e) { /* storage unavailable */ }
+  async function loadAll(st) {
     const docs = [];
-    for (const p of M.presets()) docs.push(M.fromPreset(p.key));
-    if (!docs.length) docs.push(M.newDoc("en"));
-    return { docs, current: docs[0].id };
+    for (const m of await st.listManuals()) {
+      try { const d = await st.getManual(m.id); if (d) docs.push(M.normalize(d)); } catch (e) { console.error(e); }
+    }
+    return docs;
   }
+  const builtIns = () => { const d = M.presets().map(p => M.fromPreset(p.key)); return d.length ? d : [M.newDoc("en")]; };
+
+  // Signed out: manuals saved in this browser. On the first visit, bring over manuals kept by the earlier
+  // version of the site (localStorage), otherwise start with the built-in manuals.
+  async function bootGuest() {
+    let docs = [];
+    try { docs = await loadAll(store); } catch (e) { console.error(e); }
+    if (!docs.length) {
+      try { const st = JSON.parse(localStorage.getItem(KEY) || "null"); if (st && st.docs) docs = st.docs.map(M.normalize); } catch (e) { /* none */ }
+      if (!docs.length) docs = builtIns();
+      for (const d of docs) { try { await store.putManual(d); } catch (e) { console.error(e); } }
+    }
+    try { prefs = await store.getPrefs(); } catch (e) { prefs = {}; }
+    setDocs(docs);
+  }
+  function setDocs(docs) {
+    state.docs = docs;
+    state.current = docs.some(d => d.id === prefs.lastOpen) ? prefs.lastOpen : docs[0].id;
+    sel = { kind: "settings" }; openSecs.clear();
+    renderAll();
+    setSaveState(savedText());
+  }
+  const savedText = () => store.kind === "cloud" ? "Saved to your account" : "Saved in this browser only";
+  function setSaveState(t) { const n = $("saveState"); if (n) n.textContent = t; }
+
   let saveTimer;
   function save() {
+    const d = doc(); if (d) dirty.add(d.id);
+    setSaveState("Saving…");
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      try { localStorage.setItem(KEY, JSON.stringify(state)); $("saveState").textContent = "Saved in this browser"; }
-      catch (e) { $("saveState").textContent = "Not saved — browser storage is full. Use Export config."; }
-    }, 400);
+    saveTimer = setTimeout(flush, store.kind === "cloud" ? 1500 : 500);
   }
+  let flushing = Promise.resolve();
+  function flush() {
+    clearTimeout(saveTimer);
+    flushing = flushing.then(async () => {
+      const ids = [...dirty]; dirty.clear();
+      if (!ids.length) return;
+      try {
+        for (const id of ids) { const d = state.docs.find(x => x.id === id); if (d) await store.putManual(d); }
+        setSaveState(savedText());
+      } catch (e) {
+        ids.forEach(i => dirty.add(i));
+        console.error(e);
+        setSaveState("Not saved: " + Auth.message(e) + " Use Manual → Export config to keep a copy.");
+      }
+    });
+    return flushing;
+  }
+  window.addEventListener("beforeunload", e => { if (dirty.size) { flush(); e.preventDefault(); e.returnValue = ""; } });
   const doc = () => state.docs.find(d => d.id === state.current) || state.docs[0];
   const t = () => M.tx(doc());
   const findSec = id => doc().sections.find(s => s.id === id);
@@ -492,37 +536,138 @@
     s.innerHTML = state.docs.map(d => `<option value="${esc(d.id)}">${esc(d.name || "Untitled")}</option>`).join("");
     s.value = doc().id;
   }
-  function openDoc(id) { state.current = id; sel = { kind: "settings" }; openSecs.clear(); save(); renderAll(); }
+  function rememberOpen(id) { prefs.lastOpen = id; store.putPrefs(prefs).catch(() => {}); }
+  function openDoc(id) { state.current = id; rememberOpen(id); sel = { kind: "settings" }; openSecs.clear(); renderAll(); }
   function renderAll() { renderDocSelect(); renderOutline(); renderEditor(); renderPreview(); }
+  function addDoc(d, msg) { M.normalize(d); state.docs.push(d); dirty.add(d.id); flush(); openDoc(d.id); if (msg) toast(msg); }
   $("docSelect").addEventListener("change", e => openDoc(e.target.value));
+  const fmtDate = iso => { try { return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }); } catch (e) { return iso || ""; } };
 
-  // new document sheet
+  /* in-page dialog */
+  function sheet(title, ...body) {
+    $("sheetTitle").textContent = title;
+    const b = $("sheetBody"); b.textContent = ""; b.append(...body.flat().filter(Boolean));
+    $("sheet").hidden = false;
+    const f = b.querySelector("input, button"); if (f) f.focus();
+  }
+  const closeSheet = () => { $("sheet").hidden = true; };
+  $("sheetClose").addEventListener("click", closeSheet);
+  $("sheet").addEventListener("click", e => { if (e.target.id === "sheet") closeSheet(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") { closeSheet(); document.querySelectorAll(".menu-list").forEach(m => m.hidden = true); } });
+  const sub = text => h("h3", { class: "sheet-sub" }, text);
+  function inlineConfirm(label, run) {
+    const w = h("span", { class: "confirm" });
+    const draw = () => { w.textContent = ""; w.append(btn(label, () => { w.textContent = ""; w.append(btn("Delete", run, "danger solid"), btn("Cancel", draw)); }, "danger")); };
+    draw();
+    return w;
+  }
+
+  /* new manual: blank, my templates, built-in manuals */
   function openNewSheet() {
-    const list = $("newChoices");
-    list.textContent = "";
-    const choices = [
-      { label: "Blank manual — English", hint: "Starter cover, document control, an incident part, a service request part and appendices.", run: () => M.newDoc("en") },
-      { label: "Blank manual — Arabic", hint: "نفس البداية باللغة العربية ومن اليمين إلى اليسار.", run: () => M.newDoc("ar") },
-      ...M.presets().map(p => ({ label: p.name, hint: "A full copy of this manual that you can edit.", run: () => M.fromPreset(p.key) }))
+    const choice = (label, hint, make, extra) => h("div", { class: "choice-row" },
+      h("button", { type: "button", class: "choice", onclick: async () => {
+        try { const d = await make(); closeSheet(); addDoc(d, "Created " + d.name); } catch (e) { toast(Auth.message(e), 5000); }
+      } }, h("strong", { dir: "auto" }, label), h("span", { dir: "auto" }, hint)), extra || null);
+    const blank = [
+      choice("Blank manual — English", "Starter cover, document control, an incident part, a service request part and appendices.", () => M.newDoc("en")),
+      choice("Blank manual — Arabic", "نفس البداية باللغة العربية ومن اليمين إلى اليسار.", () => M.newDoc("ar"))
     ];
-    choices.forEach(c => list.append(h("button", { type: "button", class: "choice", onclick: () => {
-      const d = c.run(); state.docs.push(d); $("newSheet").hidden = true; openDoc(d.id); toast("Created " + d.name);
-    } }, h("strong", { dir: "auto" }, c.label), h("span", { dir: "auto" }, c.hint))));
-    $("newSheet").hidden = false;
-    list.querySelector("button").focus();
+    if (prefs.defaultSettings) blank.unshift(choice("Blank manual — my default settings", "Uses the language, numbering, card fields, colours, header and footer you saved as your defaults.", () => {
+      const ds = M.clone(prefs.defaultSettings), d = M.newDoc(ds.lang);
+      d.settings = ds; return d;
+    }));
+    const tpl = h("div", { class: "choices" }, h("p", { class: "hint" }, "Loading…"));
+    store.listTemplates().then(list => {
+      tpl.textContent = "";
+      if (!list.length) tpl.append(h("p", { class: "hint" }, "No templates yet. Open a manual and choose Manual → Save as template."));
+      list.forEach(m => tpl.append(choice(m.name || "Untitled template", "Saved " + fmtDate(m.savedAt), async () => {
+        const d = await store.getTemplate(m.id); d.id = M.uid(); d.name = m.name || d.name; return d;
+      }, inlineConfirm("Delete", async () => { await store.deleteTemplate(m.id); toast("Template deleted"); openNewSheet(); }))));
+    }).catch(e => { tpl.textContent = ""; tpl.append(h("p", { class: "hint" }, Auth.message(e))); });
+    sheet("New manual",
+      sub("Start blank"), h("div", { class: "choices" }, blank),
+      sub(user ? "My templates" : "My templates (this browser)"), tpl,
+      sub("Built-in manuals"), h("div", { class: "choices" }, M.presets().map(p => choice(p.name, "A full copy of this manual that you can edit.", () => M.fromPreset(p.key)))));
   }
   $("newBtn").addEventListener("click", openNewSheet);
-  $("newClose").addEventListener("click", () => $("newSheet").hidden = true);
-  $("newSheet").addEventListener("click", e => { if (e.target.id === "newSheet") $("newSheet").hidden = true; });
-  document.addEventListener("keydown", e => { if (e.key === "Escape") { $("newSheet").hidden = true; document.querySelectorAll(".menu-list").forEach(m => m.hidden = true); } });
 
-  $("dupBtn").addEventListener("click", () => { const c = M.clone(doc()); c.id = M.uid(); c.name = (c.name || "Manual") + " (copy)"; state.docs.push(c); openDoc(c.id); toast("Duplicated"); });
-  $("delBtn").addEventListener("click", () => { $("confirmText").textContent = `Delete “${doc().name}” from this browser? Export the config first if you want to keep it.`; $("confirmBar").hidden = false; });
+  /* versions */
+  function openVersions() {
+    const d = doc();
+    const label = h("input", { class: "inp", id: "ver-label", dir: "auto", placeholder: "Version note, e.g. v1.5 approved by CAB" });
+    const list = h("div", { class: "ver-list" }, h("p", { class: "hint" }, "Loading…"));
+    const draw = () => store.listVersions(d.id).then(vs => {
+      list.textContent = "";
+      if (!vs.length) list.append(h("p", { class: "hint" }, "No saved versions yet."));
+      vs.forEach(v => list.append(h("div", { class: "ver" },
+        h("div", { class: "ver-main" }, h("strong", { dir: "auto" }, v.label || (v.auto ? "Automatic" : "Version")), h("span", null, fmtDate(v.savedAt) + (v.auto ? " · automatic" : ""))),
+        h("div", { class: "ver-tools" },
+          btn("Restore", async () => {
+            await flush();
+            await store.putVersion(M.clone(doc()), "Before restoring " + fmtDate(v.savedAt), true);
+            const old = await store.getVersion(d.id, v.id); old.id = d.id;
+            const i = state.docs.findIndex(x => x.id === d.id); state.docs[i] = M.normalize(old);
+            dirty.add(d.id); flush(); closeSheet(); sel = { kind: "settings" }; renderAll();
+            toast("Restored the version from " + fmtDate(v.savedAt) + ". The previous state was saved as a version.", 5000);
+          }),
+          btn("Open as copy", async () => {
+            const old = await store.getVersion(d.id, v.id); old.id = M.uid(); old.name = (old.name || d.name) + " (" + (v.label || fmtDate(v.savedAt)) + ")";
+            closeSheet(); addDoc(old, "Opened the version as a new manual");
+          }),
+          inlineConfirm("Delete", async () => { await store.deleteVersion(d.id, v.id); draw(); })))));
+    }).catch(e => { list.textContent = ""; list.append(h("p", { class: "hint" }, Auth.message(e))); });
+    const saveBtn = btn("Save version", async () => {
+      saveBtn.disabled = true;
+      try { await flush(); await store.putVersion(M.clone(doc()), label.value.trim(), false); label.value = ""; toast("Version saved"); draw(); }
+      catch (e) { toast(Auth.message(e), 5000); }
+      saveBtn.disabled = false;
+    }, "primary");
+    sheet("Versions of “" + (d.name || "Untitled") + "”",
+      h("p", { class: "hint" }, "Save a snapshot before big changes. A version is also saved automatically each time you download the Word file. The newest 50 versions are kept."),
+      h("div", { class: "row-inline" }, label, saveBtn), sub("Saved versions"), list);
+    draw();
+  }
+
+  function openSaveTemplate() {
+    const name = h("input", { class: "inp", id: "tpl-name", dir: "auto", value: doc().name || "" });
+    const go = btn("Save template", async () => {
+      go.disabled = true;
+      try { await store.putTemplate(M.clone(doc()), name.value.trim() || doc().name); closeSheet(); toast("Template saved. Find it under New → My templates."); }
+      catch (e) { toast(Auth.message(e), 5000); go.disabled = false; }
+    }, "primary");
+    sheet("Save as template", h("p", { class: "hint" }, "Saves this manual's settings, cover and content so you can start new manuals from it."), field("Template name", name), h("div", { class: "row-inline" }, go));
+  }
+
+  /* Manual menu */
+  function renderManualMenu() {
+    const wrap = $("manualMenu"); wrap.textContent = "";
+    const items = [
+      { group: "This manual", label: "Save version…", run: openVersions },
+      { label: "Version history…", run: openVersions },
+      { label: "Save as template…", run: openSaveTemplate },
+      { label: "Use these settings for my new manuals", run: () => { prefs.defaultSettings = M.clone(doc().settings); store.putPrefs(prefs).then(() => toast("Saved as your default settings. New → Blank manual — my default settings uses them."), e => toast(Auth.message(e), 5000)); } },
+      { label: "Duplicate", run: () => { const c = M.clone(doc()); c.id = M.uid(); c.name = (c.name || "Manual") + " (copy)"; addDoc(c, "Duplicated"); } },
+      { group: "Files", label: "Export config (.sop.json)", run: () => download(slug(doc()) + ".sop.json", new Blob([JSON.stringify(doc(), null, 1)], { type: "application/json" })) },
+      { label: "Import config…", run: () => $("importFile").click() }
+    ];
+    if (user) items.push({ group: "Account", label: "Copy this browser's manuals to my account", run: copyGuestToCloud });
+    items.push({ group: " ", label: "Delete manual…", run: () => {
+      $("confirmText").textContent = `Delete “${doc().name}”${user ? " from your account" : " from this browser"}, with its versions? This cannot be undone.`;
+      $("confirmBar").hidden = false;
+    } });
+    const m = addMenu("Manual ▾", items);
+    m.querySelector("button").classList.remove("add");
+    wrap.append(m);
+  }
   $("confirmNo").addEventListener("click", () => $("confirmBar").hidden = true);
-  $("confirmYes").addEventListener("click", () => {
-    state.docs = state.docs.filter(d => d.id !== state.current);
-    if (!state.docs.length) state.docs.push(M.newDoc("en"));
-    $("confirmBar").hidden = true; openDoc(state.docs[0].id); toast("Deleted");
+  $("confirmYes").addEventListener("click", async () => {
+    const id = state.current;
+    $("confirmBar").hidden = true;
+    dirty.delete(id);
+    state.docs = state.docs.filter(d => d.id !== id);
+    try { await store.deleteManual(id); toast("Deleted"); } catch (e) { toast(Auth.message(e), 5000); }
+    if (!state.docs.length) { const d = M.newDoc("en"); state.docs.push(d); dirty.add(d.id); flush(); }
+    openDoc(state.docs[0].id);
   });
 
   function slug(d) { return ((d.cover.fields.find(f => /SOP|-\d/.test(f.value || "")) || {}).value || d.name || "sop").replace(/[^\w؀-ۿ.-]+/g, "-").replace(/^-|-$/g, "") || "sop"; }
@@ -536,11 +681,11 @@
     try {
       const blob = await window.SOPDocx.build(doc());
       download(slug(doc()) + ".docx", blob);
+      store.putVersion(M.clone(doc()), "Word download", true).catch(e => console.error(e));
       toast("Word file downloaded. Word asks to update fields on open: choose Yes to fill the page numbers.", 5000);
     } catch (e) { console.error(e); toast("Could not build the Word file: " + e.message, 5000); }
     b.disabled = false; b.textContent = "Download Word (.docx)";
   });
-  $("exportBtn").addEventListener("click", () => download(slug(doc()) + ".sop.json", new Blob([JSON.stringify(doc(), null, 1)], { type: "application/json" })));
   $("importFile").addEventListener("change", e => {
     const f = e.target.files[0]; if (!f) return;
     const rd = new FileReader();
@@ -548,17 +693,109 @@
       try {
         const d = JSON.parse(rd.result);
         if (!d.settings || !Array.isArray(d.sections)) throw new Error("not an SOP config");
-        d.id = M.uid(); M.normalize(d); state.docs.push(d); openDoc(d.id); toast("Imported " + (d.name || "manual"));
+        d.id = M.uid(); addDoc(d, "Imported " + (d.name || "manual"));
       } catch (err) { toast("That file is not an SOP Builder config (.sop.json)", 4000); }
       e.target.value = "";
     };
     rd.readAsText(f);
   });
 
+  /* ---------- account ---------- */
+  function renderAccount() {
+    const a = $("account"); a.textContent = "";
+    if (user) {
+      const m = addMenu(user.email || user.name || "Account", [
+        { group: "Signed in as " + (user.email || user.name), label: "Sign out", run: async () => { await flush(); Auth.signOut(); } }
+      ]);
+      const b = m.querySelector("button"); b.classList.remove("add"); b.classList.add("acct"); b.title = "Signed in";
+      a.append(m);
+    } else a.append(btn("Sign in", openSignIn));
+    renderManualMenu();
+  }
+  function openSignIn() {
+    if (!Auth.configured()) {
+      sheet("Sign in", h("p", null, "Sign-in is not set up for this website yet. Until it is, your manuals, templates and versions are saved in this browser only."),
+        h("p", { class: "hint" }, "To turn it on, create a free Firebase project and paste its settings into js/firebase-config.js. The README explains each step under “Set up sign-in”."));
+      return;
+    }
+    const email = h("input", { class: "inp", type: "email", id: "auth-email", autocomplete: "email", required: true, dir: "ltr" });
+    const pw = h("input", { class: "inp", type: "password", id: "auth-pw", autocomplete: "current-password", dir: "ltr" });
+    const err = h("p", { class: "auth-err", role: "alert" });
+    const run = async (fn, okMsg) => {
+      err.textContent = "";
+      try { await fn(); closeSheet(); if (okMsg) toast(okMsg, 5000); }
+      catch (e) { err.textContent = Auth.message(e); }
+    };
+    const form = h("form", { class: "auth", onsubmit: e => { e.preventDefault(); run(() => Auth.signIn(email.value.trim(), pw.value)); } },
+      field("Email", email), field("Password", pw), err,
+      h("div", { class: "row-inline" },
+        h("button", { type: "submit", class: "btn primary" }, "Sign in"),
+        btn("Create account", () => run(() => Auth.signUp(email.value.trim(), pw.value), "Account created. Your manuals now save to your account.")),
+        btn("Forgot password?", () => {
+          if (!email.value.trim()) { err.textContent = "Enter your email first, then choose Forgot password."; return; }
+          Auth.reset(email.value.trim()).then(() => { err.textContent = ""; toast("Password reset email sent to " + email.value.trim(), 5000); }, e => { err.textContent = Auth.message(e); });
+        }, "link")),
+      h("div", { class: "or" }, h("span", null, "or")),
+      btn("Continue with Google", () => run(() => Auth.google()), "google"));
+    sheet("Sign in", h("p", { class: "hint" }, "Sign in to keep your manuals, templates, versions and default settings in your account and open them on any computer."), form);
+  }
+
+  async function copyGuestToCloud() {
+    const guest = new LocalStore("guest");
+    try {
+      const docs = await loadAll(guest);
+      const have = new Set(state.docs.map(d => d.id));
+      let n = 0;
+      for (const d of docs) { if (have.has(d.id)) continue; await store.putManual(d); state.docs.push(d); n++; }
+      for (const t of await guest.listTemplates()) await store.putTemplate(await guest.getTemplate(t.id), t.name);
+      renderDocSelect();
+      toast(n ? `Copied ${n} manual${n === 1 ? "" : "s"} from this browser to your account` : "Your account already has every manual from this browser");
+    } catch (e) { toast(Auth.message(e), 5000); }
+  }
+
+  async function onUser(u) {
+    if (!u && !user) { renderAccount(); return; }     // still signed out
+    await flush();
+    user = u;
+    if (u) {
+      setSaveState("Loading your manuals…");
+      store = Auth.store(u);
+      try {
+        prefs = await store.getPrefs();
+        let docs = await loadAll(store);
+        if (!docs.length) {
+          // first sign-in: start the account with the manuals and templates from this browser
+          const guest = new LocalStore("guest");
+          docs = await loadAll(guest).catch(() => []);
+          if (!docs.length) docs = builtIns();
+          for (const d of docs) await store.putManual(d);
+          for (const t of await guest.listTemplates().catch(() => [])) await store.putTemplate(await guest.getTemplate(t.id), t.name);
+          toast(`Welcome. ${docs.length} manual${docs.length === 1 ? " was" : "s were"} added to your account.`, 5000);
+        }
+        setDocs(docs);
+      } catch (e) {
+        console.error(e);
+        toast("Could not open your account: " + Auth.message(e), 7000);
+        store = new LocalStore("guest"); user = null;
+        await bootGuest();
+      }
+    } else {
+      store = new LocalStore("guest");
+      await bootGuest();
+      toast("Signed out. You are now editing the manuals saved in this browser.", 4000);
+    }
+    renderAccount();
+  }
+
   // views on small screens
   function syncTabs() { const v = $("work").dataset.view; document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.view === v))); }
   document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => { $("work").dataset.view = b.dataset.view; syncTabs(); if (b.dataset.view === "preview") renderPreview(); }));
 
-  renderAll();
-  window.__sop = { state, doc, select };
+  (async () => {
+    renderAccount();
+    await bootGuest();
+    try { await Auth.init(onUser); }
+    catch (e) { console.error(e); toast("Sign-in is unavailable right now: " + e.message, 6000); }
+  })();
+  window.__sop = { get state() { return state; }, doc, select, flush, get store() { return store; } };
 })();
