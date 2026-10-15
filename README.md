@@ -119,6 +119,7 @@ Then add `<script src="presets/my-sop.js"></script>` to `index.html` next to the
 | `js/app.js` | Editor |
 | `js/store.js` | Saving: this browser (IndexedDB) or the signed-in user's Firebase account; sign-in |
 | `js/firebase-config.js` | Your Firebase settings (sign-in is off while this is `null`) |
+| `SETUP.md` | Record of the live configuration: GitHub Pages, Firebase project and console settings |
 | `firestore.rules` | Firestore security rules: each user can access only their own data |
 | `presets/` | The Arabic and English CRM manuals as starting documents |
 | `tools/import_docx.py` | Converts an existing Word manual into a preset |
