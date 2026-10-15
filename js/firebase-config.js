@@ -12,4 +12,12 @@
  *   appId: "1:123:web:abc"
  * };
  */
-window.SOP_FIREBASE_CONFIG = null;
+window.SOP_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCeQA46aBWkvnyW1IEsxlc5zwiRpflQRGE",
+  authDomain: "sopbuilder-b3475.firebaseapp.com",
+  projectId: "sopbuilder-b3475",
+  storageBucket: "sopbuilder-b3475.firebasestorage.app",
+  messagingSenderId: "468497419463",
+  appId: "1:468497419463:web:6e39d026d633a2ec8a42e2",
+  measurementId: "G-04CX6958XQ"
+};
