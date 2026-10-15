@@ -19,7 +19,18 @@
     return n;
   }
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  function toast(msg, ms) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, ms || 2200); }
+  function toast(msg, ms, action) {
+    const t = $("toast");
+    t.textContent = msg;
+    if (action) t.append(h("button", { type: "button", class: "toast-btn", onclick: () => { t.hidden = true; action.run(); } }, action.label));
+    t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, ms || 2200);
+  }
+  // Remove an entry from a list and offer to put it back.
+  function removeWithUndo(arr, i, rerender, what) {
+    const [gone] = arr.splice(i, 1);
+    rerender();
+    toast(`${what || "Item"} deleted`, 6000, { label: "Undo", run: () => { arr.splice(Math.min(i, arr.length), 0, gone); rerender(); toast("Restored"); } });
+  }
 
   /* ---------- state ---------- */
   let state = load();
@@ -78,12 +89,12 @@
     return h("label", { class: "chk" }, c, h("span", null, label));
   }
   const btn = (label, onclick, cls, title) => h("button", { type: "button", class: "btn" + (cls ? " " + cls : ""), onclick, title: title || null, "aria-label": title || null }, label);
-  function tools(arr, i, rerender) {
+  function tools(arr, i, rerender, what) {
     const mv = d => { const j = i + d; if (j < 0 || j >= arr.length) return; [arr[i], arr[j]] = [arr[j], arr[i]]; rerender(); };
     return h("span", { class: "tools" },
       btn("↑", () => mv(-1), "icon", "Move up"), btn("↓", () => mv(1), "icon", "Move down"),
       btn("⧉", () => { const c = M.clone(arr[i]); reId(c); arr.splice(i + 1, 0, c); rerender(); }, "icon", "Duplicate"),
-      btn("✕", () => { arr.splice(i, 1); rerender(); }, "icon danger", "Remove"));
+      btn("✕", () => removeWithUndo(arr, i, rerender, what), "icon danger", what ? "Delete " + what.toLowerCase() : "Remove"));
   }
   function reId(b) { b.id = M.uid(); (b.blocks || []).forEach(reId); }
 
@@ -369,7 +380,7 @@
     b.rows.forEach(r => { while (r.length < n) r.push(""); });
     const dropWidths = () => { b.widths = null; };
     const tbl = h("table", { class: "tbl-ed" });
-    const hr = h("tr", null, h("th", { class: "rn" }, ""));
+    const hr = h("tr", null, h("th", { class: "rn" }, "#"));
     b.columns.forEach((c, ci) => {
       const o = { v: c };
       hr.append(h("th", null, txt(o, "v", { id: `b-${b.id}-h${ci}`, multi: true, rows: 1, cls: "cell head", after: v => { b.columns[ci] = v; } }),
@@ -382,9 +393,9 @@
     tbl.append(h("thead", null, hr));
     const tb = h("tbody");
     b.rows.forEach((r, ri) => {
-      const tr = h("tr", null, h("td", { class: "rn" }, String(ri + 1)));
+      const tr = h("tr", null, h("td", { class: "rn" }, h("div", { class: "rn-num" }, String(ri + 1)), tools(b.rows, ri, rer, "Row")));
       r.forEach((c, ci) => { const o = { v: c }; tr.append(h("td", null, txt(o, "v", { id: `b-${b.id}-r${ri}c${ci}`, multi: true, rows: 1, cls: "cell", after: v => { r[ci] = v; } }))); });
-      tr.append(h("td", { class: "rn" }, tools(b.rows, ri, rer)));
+      tr.append(h("td", { class: "rn end" }));
       tb.append(tr);
     });
     tbl.append(tb);

@@ -142,6 +142,10 @@ textarea.inp { resize: vertical; min-height: 34px; display: block; }
 .tbl-ed th, .tbl-ed td { border: 1px solid var(--line); padding: 2px; vertical-align: top; min-width: 130px; }
 .tbl-ed th { background: var(--accent-soft); }
 .tbl-ed .rn { min-width: 0; width: 1%; text-align: center; color: var(--muted); font: 500 11px/28px var(--f-mono); background: var(--sunk); white-space: nowrap; }
+.tbl-ed tr > .rn:first-child { position: sticky; inset-inline-start: 0; z-index: 1; box-shadow: 1px 0 0 var(--line); }
+.tbl-ed td.rn:first-child { vertical-align: top; padding: 2px; }
+.tbl-ed td.rn .tools { display: grid; grid-template-columns: repeat(2, auto); }
+.rn-num { font: 600 11px/22px var(--f-mono); color: var(--accent); }
 .tbl-ed .cell { border: 0; background: transparent; border-radius: 3px; padding: 4px 6px; font-size: 13px; min-height: 30px; }
 .tbl-ed .cell.head { font-weight: 600; }
 .tbl-ed .cell:focus { background: var(--panel); }
@@ -167,6 +171,7 @@ textarea.inp { resize: vertical; min-height: 34px; display: block; }
 .choice strong { font-size: 15px; }
 .choice span { color: var(--muted); font-size: 13px; }
 
+.toast-btn { margin-inline-start: 12px; border: 0; background: none; color: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; padding: 0; }
 .toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); max-width: min(560px, calc(100% - 32px)); background: var(--ink); color: var(--bg); padding: 9px 14px; border-radius: var(--r); font-weight: 500; z-index: 60; box-shadow: 0 6px 20px rgba(0, 0, 0, .25); }
 
 /* ---------- document preview (mirrors the Word layout) ---------- */
