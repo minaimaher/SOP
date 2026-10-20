@@ -59,6 +59,8 @@
         simple: "Send without reading the reply", opened: "Opened Power Automate Desktop. Confirm the run there.", openedLink: "Link opened in a new tab.",
         noUrl: "Add the flow link to this item in the editor first.", required: "Fill in “{0}”.", number: "“{0}” must be a number.",
         desktopUrl: "A desktop flow link must start with ms-powerautomate:", cloudUrl: "A cloud flow link must start with https://",
+        flowCol: "Desktop flow", runRow: "Run", params: "Parameters", openPad: "Open in Power Automate Desktop",
+        runTitle: "Run “{0}”", runHint: "Power Automate Desktop opens and asks you to confirm the run.",
         word: { label: "Automation", type: "Type", param: "Parameter", desc: "Description", required: "Required", yes: "Yes", no: "No", link: "Link" }
       }
     },
@@ -114,6 +116,8 @@
         simple: "إرسال دون قراءة الرد", opened: "فُتح Power Automate Desktop. أكّد التشغيل هناك.", openedLink: "فُتح الرابط في علامة تبويب جديدة.",
         noUrl: "أضف رابط التدفق إلى هذا العنصر في المحرر أولًا.", required: "أدخل «{0}».", number: "يجب أن يكون «{0}» رقمًا.",
         desktopUrl: "يجب أن يبدأ رابط تدفق سطح المكتب بـ ms-powerautomate:", cloudUrl: "يجب أن يبدأ رابط التدفق السحابي بـ https://",
+        flowCol: "تدفق سطح المكتب", runRow: "تشغيل", params: "المُعاملات", openPad: "فتح في Power Automate Desktop",
+        runTitle: "تشغيل «{0}»", runHint: "سيفتح Power Automate Desktop ويطلب منك تأكيد التشغيل.",
         word: { label: "الأتمتة", type: "النوع", param: "المُعامل", desc: "الوصف", required: "إلزامي", yes: "نعم", no: "لا", link: "الرابط" }
       }
     }
@@ -229,6 +233,8 @@
     return normalize(doc);
   }
 
+  const FLOW_TABLES = /^(Fix #|Request #|رقم الإصلاح|رقم الطلب)$/;
+
   /* Give every section/block a stable id (used by the editor) and fill missing settings. */
   function normalize(doc) {
     doc.id = doc.id || uid();
@@ -238,6 +244,10 @@
     const walk = list => (list || []).forEach(b => {
       b.id = b.id || uid();
       if (b.type === "card") { b.fields = b.fields || {}; b.blocks = b.blocks || []; walk(b.blocks); }
+      // Manuals saved before the Desktop flow column existed: turn it on for the Part J fix and request indexes.
+      if (b.type === "table" && b.flowColumn === undefined && FLOW_TABLES.test(String((b.columns || [])[0] || "").trim())) {
+        b.flowColumn = true; b.flowTitle = T[doc.settings.lang === "ar" ? "ar" : "en"].auto.flowCol;
+      }
     });
     (doc.sections || []).forEach(s => { s.id = s.id || uid(); s.blocks = s.blocks || []; walk(s.blocks); });
     return doc;

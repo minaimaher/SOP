@@ -125,6 +125,39 @@
     return { ok: true, opaque: true };
   }
 
+  /* ---------- Desktop flow column on tables ----------
+   * A table can have b.flowColumn = true. b.flows[i] belongs to b.rows[i]:
+   *   { name, url (ms-powerautomate: run URL), params: [...] } or null.
+   */
+  const rowFlow = (table, ri) => {
+    const f = (table.flows || [])[ri];
+    return f && String(f.url || "").trim() ? { kind: "desktop", ...f } : null;
+  };
+
+  /** Parameter default values for a row. A default like {Fix #} takes the value of that column in the row. */
+  function rowDefaults(table, ri, flow) {
+    const cols = (table.columns || []).map(c => String(c || "").trim().toLowerCase());
+    const row = (table.rows || [])[ri] || [];
+    const out = {};
+    for (const p of flow.params || []) {
+      if (!p.name) continue;
+      const d = String(p.default ?? "");
+      if (p.type === "yesno") { out[p.name] = d === "true"; continue; }
+      out[p.name] = d.replace(/\{([^{}]+)\}/g, (m, name) => {
+        const i = cols.indexOf(name.trim().toLowerCase());
+        return i < 0 ? m : String(row[i] ?? "").replace(/[`*]/g, "").trim();
+      });
+    }
+    return out;
+  }
+
+  /** Short text for the Word document: flow name and its parameter names. */
+  function flowSummary(flow, t) {
+    if (!flow) return "";
+    const names = (flow.params || []).filter(p => p.name).map(p => "`" + p.name + "`");
+    return [flow.name || t.flowCol, names.length ? `${t.params}: ${names.join(", ")}` : ""].filter(Boolean).join("\n");
+  }
+
   /** Opens a link (separate so tests can replace it). */
   function openUrl(url, newTab) {
     if (newTab) { global.open(url, "_blank", "noopener"); return; }
@@ -136,5 +169,5 @@
     a.remove();
   }
 
-  global.SOPAutomation = { KINDS, TYPES, coerce, validate, values, desktopUrl, linkUrl, cloudBody, schema, splitOptions, postCloud, postCloudSimple, openUrl };
+  global.SOPAutomation = { KINDS, TYPES, coerce, validate, values, desktopUrl, linkUrl, cloudBody, schema, splitOptions, rowFlow, rowDefaults, flowSummary, postCloud, postCloudSimple, openUrl };
 })(typeof window !== "undefined" ? window : globalThis);

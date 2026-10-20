@@ -68,6 +68,19 @@ Everything is in the **Manual ▾** menu next to **New**:
 - **Signed in:** they're saved to your account, so they follow you to any computer.
 - **First sign-in:** the account starts with the manuals and templates from that browser.
 
+## Desktop flow column (Part J fixes and service requests)
+
+The Part J fix index and the service request catalog have a **Desktop flow** column. Each row can have its own Power Automate Desktop flow, and the SOP page shows a **▶ Run** button in that row.
+
+1. Open Part J in the editor. In the table, click **+ Flow** on a row.
+2. Fill in:
+   - **Flow name:** shown under the Run button and in the Word document.
+   - **Run URL:** in Power Automate Desktop, the flow's **⋯ → Properties → Run URL** (`ms-powerautomate:/console/flow/run?...`).
+   - **Parameters:** each one needs a name that matches an **input variable** in the flow. You also set its label, type, default value and whether it is required. A default like `{Fix #}` or `{Request #}` fills in that column's value from the row.
+3. On the SOP page, **▶ Run** asks for the parameter values, then opens Power Automate Desktop with them as `inputArguments`. Power Automate Desktop then asks you to confirm the run.
+
+Any other table can have the column too: tick **Power Automate Desktop column** under the table. Moving, copying or deleting a row moves its flow with it. The Word document shows the flow name and parameter names in the column, but not the Run URL. Manuals saved before this change get the column on both Part J tables automatically.
+
 ## Run Power Automate flows from the SOP page
 
 Inside a procedure card (or a part), choose **+ Add item → Power Automate flow (Run button)**. The item shows a small form and a **Run** button on the SOP page. Whoever follows the procedure fills in the values and starts the flow from there.

@@ -13,17 +13,28 @@
     }).join("");
   }
 
-  function table(b) {
+  function table(doc, b) {
+    const A = global.SOPAutomation, flows = !!b.flowColumn;
     const cols = b.columns || [];
-    const rows = (b.rows || []).filter(r => r && r.some(c => String(c ?? "").trim()));
-    const n = Math.max(cols.length, ...rows.map(r => r.length), 1);
+    const rows = (b.rows || []).map((r, ri) => ({ r: r || [], ri })).filter(x => x.r.some(c => String(c ?? "").trim()) || (flows && A.rowFlow(b, x.ri)));
+    const n = Math.max(cols.length, ...rows.map(x => x.r.length), 1);
     const w = Array.isArray(b.widths) && b.widths.length === n ? b.widths : null;
     const sum = w ? w.reduce((a, c) => a + +c, 0) : 0;
     let h = `<div class="pv-tbl-wrap"><table class="pv-tbl${n >= 7 ? " pv-tbl-wide" : ""}">`;
-    if (w) h += `<colgroup>${w.map(v => `<col style="width:${(v / sum * 100).toFixed(2)}%">`).join("")}</colgroup>`;
-    if (cols.length) h += `<thead><tr>${Array.from({ length: n }, (_, i) => `<th>${inline(cols[i] || "")}</th>`).join("")}</tr></thead>`;
-    h += `<tbody>${rows.map(r => `<tr>${Array.from({ length: n }, (_, i) => `<td>${inline(r[i] || "")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+    if (w) h += `<colgroup>${w.map(v => `<col style="width:${(v / sum * (flows ? 88 : 100)).toFixed(2)}%">`).join("")}${flows ? `<col style="width:12%">` : ""}</colgroup>`;
+    const t = flows ? global.SOPModel.tx(doc).auto : null;
+    if (cols.length) h += `<thead><tr>${Array.from({ length: n }, (_, i) => `<th>${inline(cols[i] || "")}</th>`).join("")}${flows ? `<th class="pv-flow-h">${esc(b.flowTitle || t.flowCol)}</th>` : ""}</tr></thead>`;
+    h += `<tbody>${rows.map(({ r, ri }) => `<tr>${Array.from({ length: n }, (_, i) => `<td>${inline(r[i] || "")}</td>`).join("")}${flows ? flowCell(b, ri, t) : ""}</tr>`).join("")}</tbody></table></div>`;
     return h;
+  }
+
+  function flowCell(b, ri, t) {
+    const f = global.SOPAutomation.rowFlow(b, ri);
+    if (!f) return `<td class="pv-flow"><span class="pv-flow-none">—</span></td>`;
+    const names = (f.params || []).filter(p => p.name).map(p => esc(p.label || p.name));
+    return `<td class="pv-flow"><button type="button" class="pv-flow-run" data-flow="${esc(b.id)}" data-row="${ri}" title="${esc(f.name || t.openPad)}">▶ ${esc(t.runRow)}</button>` +
+      (f.name ? `<div class="pv-flow-name">${esc(f.name)}</div>` : "") +
+      (names.length ? `<div class="pv-flow-params">${names.join(" · ")}</div>` : "") + `</td>`;
   }
 
   function cardHeader(doc, card, id) {
@@ -47,7 +58,7 @@
       case "note": return `<p class="pv-note" ${id}>${inline(b.text)}</p>`;
       case "bullets": case "checklist": return `<ul class="pv-list ${b.type}" ${id}>${(b.items || []).filter(t => String(t).trim()).map(t => `<li>${inline(t)}</li>`).join("")}</ul>`;
       case "steps": return `<ol class="pv-list" ${id}>${(b.items || []).filter(t => String(t).trim()).map(t => `<li>${inline(t)}</li>`).join("")}</ol>`;
-      case "table": return `<div ${id}>${table(b)}</div>`;
+      case "table": return `<div ${id}>${table(doc, b)}</div>`;
       case "image": return b.src ? `<figure class="pv-fig" ${id}><img src="${esc(b.src)}" alt="${esc(b.alt || "")}" style="width:${Math.min(+b.width || 6, 6.7) / 6.7 * 100}%">${b.caption ? `<figcaption>${inline(b.caption)}</figcaption>` : ""}</figure>`
         : `<div class="pv-empty" ${id}>Image: choose a file</div>`;
       case "pagebreak": return `<div class="pv-break" ${id}><span>page break</span></div>`;

@@ -256,8 +256,20 @@
           return (b.items || []).filter(t => String(t).trim()).map(t =>
             this.p(this.runs(t, this.rtlRun({})), { style: "ListParagraph", num, spacing: `<w:spacing w:after="60" w:line="288" w:lineRule="auto"/>` })).join("");
         }
-        case "table":
-          return this.dataTable(b, width);
+        case "table": {
+          if (!b.flowColumn) return this.dataTable(b, width);
+          // Desktop flow column: the flow name and its parameters (the run button lives on the SOP page)
+          const A = global.SOPAutomation, t = global.SOPModel.tx(this.doc).auto;
+          const n = Math.max((b.columns || []).length, ...(b.rows || []).map(r => (r || []).length), 1);
+          const pad = r => Array.from({ length: n }, (_, i) => (r || [])[i] ?? "");
+          const ok = Array.isArray(b.widths) && b.widths.length === n;
+          return this.dataTable({
+            ...b,
+            columns: [...pad(b.columns), b.flowTitle || t.flowCol],
+            rows: (b.rows || []).map((r, ri) => [...pad(r), A.flowSummary(A.rowFlow(b, ri), t)]),
+            widths: ok ? [...b.widths.map(Number), b.widths.reduce((a, c) => a + +c, 0) / n * 1.2] : null
+          }, width);
+        }
         case "image": {
           if (!b.src) return "";
           const wIn = Math.min(+b.width || 6, width / TWIP);

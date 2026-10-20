@@ -26,10 +26,16 @@
     t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, ms || 2200);
   }
   // Remove an entry from a list and offer to put it back.
-  function removeWithUndo(arr, i, rerender, what) {
+  // `linked` lists arrays kept in step with `arr` (e.g. a table's per-row flows).
+  function removeWithUndo(arr, i, rerender, what, linked = []) {
     const [gone] = arr.splice(i, 1);
+    const goneLinked = linked.map(l => l.splice(i, 1)[0]);
     rerender();
-    toast(`${what || "Item"} deleted`, 6000, { label: "Undo", run: () => { arr.splice(Math.min(i, arr.length), 0, gone); rerender(); toast("Restored"); } });
+    toast(`${what || "Item"} deleted`, 6000, { label: "Undo", run: () => {
+      const j = Math.min(i, arr.length);
+      arr.splice(j, 0, gone); linked.forEach((l, k) => l.splice(j, 0, goneLinked[k]));
+      rerender(); toast("Restored");
+    } });
   }
 
   /* ---------- state ---------- */
@@ -133,14 +139,14 @@
     return h("label", { class: "chk" }, c, h("span", null, label));
   }
   const btn = (label, onclick, cls, title) => h("button", { type: "button", class: "btn" + (cls ? " " + cls : ""), onclick, title: title || null, "aria-label": title || null }, label);
-  function tools(arr, i, rerender, what) {
-    const mv = d => { const j = i + d; if (j < 0 || j >= arr.length) return; [arr[i], arr[j]] = [arr[j], arr[i]]; rerender(); };
+  function tools(arr, i, rerender, what, linked = []) {
+    const mv = d => { const j = i + d; if (j < 0 || j >= arr.length) return; [arr, ...linked].forEach(a => { [a[i], a[j]] = [a[j], a[i]]; }); rerender(); };
     return h("span", { class: "tools" },
       btn("↑", () => mv(-1), "icon", "Move up"), btn("↓", () => mv(1), "icon", "Move down"),
-      btn("⧉", () => { const c = M.clone(arr[i]); reId(c); arr.splice(i + 1, 0, c); rerender(); }, "icon", "Duplicate"),
-      btn("✕", () => removeWithUndo(arr, i, rerender, what), "icon danger", what ? "Delete " + what.toLowerCase() : "Remove"));
+      btn("⧉", () => { const c = M.clone(arr[i]); reId(c); arr.splice(i + 1, 0, c); linked.forEach(l => l.splice(i + 1, 0, l[i] == null ? null : M.clone(l[i]))); rerender(); }, "icon", "Duplicate"),
+      btn("✕", () => removeWithUndo(arr, i, rerender, what, linked), "icon danger", what ? "Delete " + what.toLowerCase() : "Remove"));
   }
-  function reId(b) { b.id = M.uid(); (b.blocks || []).forEach(reId); }
+  function reId(b) { if (b && typeof b === "object" && !Array.isArray(b)) { b.id = M.uid(); (b.blocks || []).forEach(reId); } }
 
   /* ---------- outline ---------- */
   function renderOutline() {
@@ -424,6 +430,8 @@
     while (b.columns.length < n) b.columns.push("");
     b.rows.forEach(r => { while (r.length < n) r.push(""); });
     const dropWidths = () => { b.widths = null; };
+    if (b.flowColumn || b.flows) { b.flows = b.flows || []; while (b.flows.length < b.rows.length) b.flows.push(null); b.flows.length = b.rows.length; }
+    const linked = b.flows ? [b.flows] : [];
     const tbl = h("table", { class: "tbl-ed" });
     const hr = h("tr", null, h("th", { class: "rn" }, "#"));
     b.columns.forEach((c, ci) => {
@@ -434,12 +442,18 @@
           btn("✕", () => { b.columns.splice(ci, 1); b.rows.forEach(r => r.splice(ci, 1)); dropWidths(); rer(); }, "icon tiny danger", "Remove column"),
           btn("›", () => { if (ci < b.columns.length - 1) { swapCol(b, ci, ci + 1); rer(); } }, "icon tiny", "Move column forward"))));
     });
+    if (b.flowColumn) hr.append(h("th", { class: "flow-th" }, b.flowTitle || t().auto.flowCol));
     hr.append(h("th", { class: "rn" }, btn("+", () => { b.columns.push(""); b.rows.forEach(r => r.push("")); dropWidths(); rer(); }, "icon", "Add column")));
     tbl.append(h("thead", null, hr));
     const tb = h("tbody");
     b.rows.forEach((r, ri) => {
-      const tr = h("tr", null, h("td", { class: "rn" }, h("div", { class: "rn-num" }, String(ri + 1)), tools(b.rows, ri, rer, "Row")));
+      const tr = h("tr", null, h("td", { class: "rn" }, h("div", { class: "rn-num" }, String(ri + 1)), tools(b.rows, ri, rer, "Row", linked)));
       r.forEach((c, ci) => { const o = { v: c }; tr.append(h("td", null, txt(o, "v", { id: `b-${b.id}-r${ri}c${ci}`, multi: true, rows: 1, cls: "cell", after: v => { r[ci] = v; } }))); });
+      if (b.flowColumn) {
+        const f = b.flows[ri];
+        const set = f && String(f.url || "").trim();
+        tr.append(h("td", { class: "flow-td" }, btn(set ? "▶ " + (f.name || "Flow set") : "+ Flow", () => openFlowEditor(b, ri, rer), "flow-btn" + (set ? " set" : ""), set ? "Edit the desktop flow for row " + (ri + 1) : "Add a desktop flow to row " + (ri + 1))));
+      }
       tr.append(h("td", { class: "rn end" }));
       tb.append(tr);
     });
@@ -451,7 +465,11 @@
         btn("Add as rows", e => { pasteRows(b, e.target.closest("details").querySelector("textarea").value, false); rer(); }),
         btn("Replace table (first line = headers)", e => { pasteRows(b, e.target.closest("details").querySelector("textarea").value, true); rer(); })));
     return h("div", null, h("div", { class: "tbl-scroll" }, tbl),
-      h("div", { class: "row-inline" }, btn("+ Add row", () => { b.rows.push(Array(b.columns.length).fill("")); rer(); }, "add"), check(b, "firstColBold", "Bold first column")), paste);
+      h("div", { class: "row-inline" }, btn("+ Add row", () => { b.rows.push(Array(b.columns.length).fill("")); rer(); }, "add"), check(b, "firstColBold", "Bold first column"),
+        check(b, "flowColumn", "Power Automate Desktop column", () => { if (b.flowColumn && !b.flowTitle) b.flowTitle = t().auto.flowCol; renderEditor(); })),
+      b.flowColumn ? h("div", { class: "row-inline" }, field("Column title", txt(b, "flowTitle", { id: `b-${b.id}-flowtitle` })),
+        h("span", { class: "fld-h" }, "Use “+ Flow” on a row to set its Run URL and parameters. The SOP page shows a Run button in that row.")) : null,
+      paste);
   }
   function swapCol(b, a, c) { [b.columns[a], b.columns[c]] = [b.columns[c], b.columns[a]]; b.rows.forEach(r => [r[a], r[c]] = [r[c], r[a]]); if (b.widths) [b.widths[a], b.widths[c]] = [b.widths[c], b.widths[a]]; }
   function parseTSV(text) {
@@ -470,7 +488,7 @@
   function pasteRows(b, text, replace) {
     const rows = parseTSV(text || "");
     if (!rows.length) { toast("Nothing to paste"); return; }
-    if (replace) { b.columns = rows.shift(); b.rows = rows; b.widths = null; }
+    if (replace) { b.columns = rows.shift(); b.rows = rows; b.widths = null; if (b.flows) b.flows = []; }
     else b.rows.push(...rows);
     toast(`${replace ? "Table replaced" : rows.length + " rows added"}`);
   }
@@ -484,15 +502,11 @@
     link: "Any address. Put {parameterName} where a value goes, e.g. https://jira…/browse/{ticketNumber}"
   };
   const TYPE_NAMES = { text: "Text", number: "Number", date: "Date", yesno: "Yes / No", choice: "Choice" };
-  function automationEditor(b, rer) {
-    b.params = b.params || [];
-    if (b.sendContext === undefined) b.sendContext = true;
-    const id = "auto-" + b.id;
-    const kind = h("select", { class: "inp", id: id + "-kind", onchange: e => { b.kind = e.target.value; rer(); } }, A.KINDS.map(k => h("option", { value: k }, KIND_LABEL[k])));
-    kind.value = A.KINDS.includes(b.kind) ? b.kind : "cloud";
+  function paramsEditor(owner, rer, id, hint) {
+    owner.params = owner.params || [];
     const rows = h("div", { class: "auto-params" });
-    if (!b.params.length) rows.append(h("p", { class: "hint" }, "No parameters. The flow runs without input values."));
-    b.params.forEach((p, i) => {
+    if (!owner.params.length) rows.append(h("p", { class: "hint" }, "No parameters. The flow runs without input values."));
+    owner.params.forEach((p, i) => {
       const type = h("select", { class: "inp", onchange: e => { p.type = e.target.value; rer(); } }, A.TYPES.map(k => h("option", { value: k }, TYPE_NAMES[k])));
       type.value = p.type || "text";
       const req = h("input", { type: "checkbox", onchange: e => { p.required = e.target.checked; changed(); } });
@@ -502,11 +516,42 @@
           field("Name in the flow", txt(p, "name", { id: `${id}-p${i}-name`, dir: "ltr", ph: "ticketNumber" })),
           field("Label on the page", txt(p, "label", { id: `${id}-p${i}-label` })),
           field("Type", type),
-          field("Default value", txt(p, "default", { id: `${id}-p${i}-def`, ph: p.type === "yesno" ? "true or false" : "" })),
+          field("Default value", txt(p, "default", { id: `${id}-p${i}-def`, ph: p.type === "yesno" ? "true or false" : "" }), hint),
           p.type === "choice" ? field("Choices (comma separated)", txt(p, "options", { id: `${id}-p${i}-opt` })) : null,
           h("label", { class: "chk" }, req, h("span", null, "Required"))),
-        tools(b.params, i, rer, "Parameter")));
+        tools(owner.params, i, rer, "Parameter")));
     });
+    return rows;
+  }
+
+  /* Desktop flow of one table row (edited in the dialog). */
+  function openFlowEditor(b, ri, rerTable) {
+    b.flows = b.flows || [];
+    if (!b.flows[ri]) b.flows[ri] = { name: "", url: "", params: [{ name: "ticketNumber", label: t().auto.ticket, type: "text", required: true, default: "", options: "" }] };
+    const f = b.flows[ri], id = `flow-${b.id}-${ri}`;
+    const again = () => { changed(true); renderEditor(); openFlowEditor(b, ri, rerTable); };
+    const rowName = (b.rows[ri] || []).find(c => String(c || "").trim()) || "row " + (ri + 1);
+    const cols = (b.columns || []).filter(c => String(c || "").trim());
+    sheet("Desktop flow — " + String(rowName).replace(/[`*]/g, "").slice(0, 60),
+      field("Flow name", txt(f, "name", { id: id + "-name", ph: "e.g. Fix duplicate contacts"}), "Shown under the Run button and in the Word document."),
+      field("Run URL", txt(f, "url", { id: id + "-url", dir: "ltr", ph: "ms-powerautomate:/console/flow/run?environmentid=…&workflowid=…&source=Other" }),
+        "In Power Automate Desktop: the flow's ⋯ → Properties → Run URL. Create input variables in the flow with the same names as the parameters below."),
+      h("div", { class: "fld-l" }, "Parameters"),
+      paramsEditor(f, again, id, cols.length ? `{${cols[0]}} fills in this row's “${cols[0]}” value.` : null),
+      h("div", { class: "row-inline" },
+        btn("+ Add parameter", () => { f.params.push({ name: "", label: "", type: "text", required: false, default: "", options: "" }); again(); }, "add"),
+        btn("Done", closeSheet, "primary"),
+        inlineConfirm("Remove flow", () => { b.flows[ri] = null; closeSheet(); rerTable(); })));
+    sheetOnClose = () => renderEditor();
+  }
+
+  function automationEditor(b, rer) {
+    b.params = b.params || [];
+    if (b.sendContext === undefined) b.sendContext = true;
+    const id = "auto-" + b.id;
+    const kind = h("select", { class: "inp", id: id + "-kind", onchange: e => { b.kind = e.target.value; rer(); } }, A.KINDS.map(k => h("option", { value: k }, KIND_LABEL[k])));
+    kind.value = A.KINDS.includes(b.kind) ? b.kind : "cloud";
+    const rows = paramsEditor(b, rer, id);
     const schemaBtn = b.kind === "desktop" || b.kind === "link" ? null : btn("Show request schema", () => {
       const json = JSON.stringify(A.schema(b), null, 2);
       sheet("Request body JSON schema",
@@ -647,7 +692,52 @@
     if (box) runValues[box.dataset.auto] = { ...(runValues[box.dataset.auto] || {}), [el.dataset.param]: readField(el) };
   }));
 
+  // Desktop flow column: the Run button in a table row
+  function findBlock(id) {
+    let hit = null;
+    const walk = list => (list || []).forEach(b => { if (b.id === id) hit = b; else if (b.blocks) walk(b.blocks); });
+    doc().sections.forEach(s => walk(s.blocks));
+    return hit;
+  }
+  function runRowFlow(tableId, ri) {
+    const b = findBlock(tableId), f = b && A.rowFlow(b, ri);
+    if (!f) return;
+    const tx = t().auto, key = `${tableId}:${ri}`;
+    const open = raw => {
+      const problems = A.validate(f, raw, tx);
+      if (problems.length) return problems.join(" ");
+      A.openUrl(A.desktopUrl(f, raw));
+      toast(tx.opened, 4000);
+      return null;
+    };
+    const params = (f.params || []).filter(p => p.name);
+    if (!params.length) { const err = open({}); if (err) toast(err, 5000); return; }
+    const vals = { ...A.rowDefaults(b, ri, f), ...(runValues[key] || {}) };
+    const dir = doc().settings.dir === "rtl" ? "rtl" : "ltr";
+    const inputs = params.map(p => {
+      let c;
+      if (p.type === "yesno") { c = h("input", { type: "checkbox", "data-param": p.name }); c.checked = !!vals[p.name]; return h("label", { class: "chk" }, c, h("span", null, (p.label || p.name) + (p.required ? " *" : ""))); }
+      if (p.type === "choice") { c = h("select", { class: "inp", "data-param": p.name }, h("option", { value: "" }, tx.choose), A.splitOptions(p.options).map(o => h("option", null, o))); }
+      else c = h("input", { class: "inp", type: p.type === "number" ? "number" : p.type === "date" ? "date" : "text", "data-param": p.name, dir: "auto" });
+      c.value = vals[p.name] ?? "";
+      return field((p.label || p.name) + (p.required ? " *" : ""), c);
+    });
+    const msg = h("p", { class: "warn", hidden: true, role: "alert" });
+    const form = h("form", { class: "stack", dir, onsubmit: e => {
+      e.preventDefault();
+      const raw = {};
+      form.querySelectorAll("[data-param]").forEach(el => { raw[el.dataset.param] = readField(el); });
+      runValues[key] = raw;
+      const err = open(raw);
+      if (err) { msg.textContent = err; msg.hidden = false; } else closeSheet();
+    } }, inputs, msg, h("p", { class: "hint" }, tx.runHint),
+      h("div", { class: "row-inline" }, h("button", { type: "submit", class: "btn primary" }, "▶ " + tx.openPad), btn(tx.cancel, closeSheet)));
+    sheet(tx.runTitle.replace("{0}", f.name || tx.flowCol), form);
+  }
+
   $("paper").addEventListener("click", e => {
+    const flowBtn = e.target.closest("[data-flow]");
+    if (flowBtn) { runRowFlow(flowBtn.dataset.flow, +flowBtn.dataset.row); return; }
     const autoBox = e.target.closest("[data-auto]");
     if (autoBox && e.target.closest(".pv-auto-form, .pv-auto-actions, .pv-auto-status")) {
       const b = e.target.closest("button");
@@ -688,9 +778,11 @@
     $("sheetTitle").textContent = title;
     const b = $("sheetBody"); b.textContent = ""; b.append(...body.flat().filter(Boolean));
     $("sheet").hidden = false;
+    sheetOnClose = null;
     const f = b.querySelector("input, button"); if (f) f.focus();
   }
-  const closeSheet = () => { $("sheet").hidden = true; };
+  let sheetOnClose = null;
+  const closeSheet = () => { if ($("sheet").hidden) return; $("sheet").hidden = true; const f = sheetOnClose; sheetOnClose = null; if (f) f(); };
   $("sheetClose").addEventListener("click", closeSheet);
   $("sheet").addEventListener("click", e => { if (e.target.id === "sheet") closeSheet(); });
   document.addEventListener("keydown", e => { if (e.key === "Escape") { closeSheet(); document.querySelectorAll(".menu-list").forEach(m => m.hidden = true); } });
