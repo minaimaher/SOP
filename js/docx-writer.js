@@ -14,7 +14,7 @@
   const x = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const hex = (c, d) => (/^[0-9a-f]{6}$/i.test(String(c || "").replace("#", "")) ? String(c).replace("#", "").toUpperCase() : d);
 
-  /* ---------- inline mini-markup: **bold**, `code`, [text](url) ---------- */
+  /* ---------- inline mini-markup: **bold**, `code`, [text](url), [!text](url) = link drawn as a button ---------- */
   function parseInline(text) {
     const out = [];
     const re = /\*\*([\s\S]+?)\*\*|`([^`]+)`|\[([^\]]+)\]\(([^)\s]+)\)/g;
@@ -24,6 +24,7 @@
       if (m.index > last) out.push({ t: src.slice(last, m.index) });
       if (m[1] != null) parseInline(m[1]).forEach(s => out.push({ ...s, b: true }));
       else if (m[2] != null) out.push({ t: m[2], code: true });
+      else if (m[3].startsWith("!")) out.push({ t: m[3].slice(1), link: m[4], button: true });
       else out.push({ t: m[3], link: m[4] });
       last = re.lastIndex;
     }
@@ -100,13 +101,14 @@
       const sz = o.code ? Math.max((o.size || 21) - 3, 14) : o.size;
       if (sz) r += `<w:sz w:val="${sz}"/><w:szCs w:val="${sz}"/>`;
       if (o.link) r += `<w:u w:val="single"/>`;
+      if (o.button) r += `<w:bdr w:val="single" w:sz="8" w:space="0" w:color="${this.c.primary}"/><w:shd w:val="clear" w:color="auto" w:fill="${this.c.primary}"/>`;
       if (o.rtl) r += "<w:rtl/>";
       return `<w:rPr>${r}</w:rPr>`;
     }
     runs(text, o = {}) {
       let xml = "";
       for (const seg of parseInline(text)) {
-        const opt = { ...o, b: o.b || seg.b, code: seg.code, link: seg.link };
+        const opt = seg.button ? { ...o, b: true, color: "FFFFFF", button: true, size: Math.max(o.size || 0, 19) } : { ...o, b: o.b || seg.b, code: seg.code, link: seg.link };
         const pieces = this.rtl && !seg.code ? splitDir(seg.t) : [{ d: this.rtl ? "l" : "l", t: seg.t }];
         let inner = "";
         for (const p of pieces) {

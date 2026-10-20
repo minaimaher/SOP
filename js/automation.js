@@ -164,13 +164,14 @@
     return desktopUrl({ ...flow, params }, vals).replace(/\(/g, "%28").replace(/\)/g, "%29");
   }
 
-  /** Text for the Word document: the flow name as a link that runs the flow, then its parameter names. */
+  /** Text for the Word document: a Run button linked to the flow, the flow name, then its parameter names. */
   function flowSummary(table, ri, t) {
     const flow = rowFlow(table, ri);
     if (!flow) return "";
     const name = String(flow.name || t.flowCol).replace(/[\[\]`*]/g, "");
     const names = (flow.params || []).filter(p => p.name).map(p => "`" + p.name + "`");
-    return [`[▶ ${name}](${rowRunUrl(table, ri)})`, names.length ? `${t.params}: ${names.join(", ")}` : ""].filter(Boolean).join("\n");
+    // [!…](url) is drawn as a button in Word; no-break spaces pad its label
+    return [`[!\u00a0\u25ba ${t.runRow}\u00a0](${rowRunUrl(table, ri)})`, name, names.length ? `${t.params}: ${names.join(", ")}` : ""].filter(Boolean).join("\n");
   }
 
   /** Opens a link (separate so tests can replace it). */

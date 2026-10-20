@@ -533,7 +533,7 @@
     const rowName = (b.rows[ri] || []).find(c => String(c || "").trim()) || "row " + (ri + 1);
     const cols = (b.columns || []).filter(c => String(c || "").trim());
     sheet("Desktop flow — " + String(rowName).replace(/[`*]/g, "").slice(0, 60),
-      field("Flow name", txt(f, "name", { id: id + "-name", ph: "e.g. Fix duplicate contacts"}), "Shown under the Run button. In the Word document it is a link that runs the flow."),
+      field("Flow name", txt(f, "name", { id: id + "-name", ph: "e.g. Fix duplicate contacts"}), "Shown under the Run button, on the SOP page and in the Word document (where the button runs the flow too)."),
       field("Run URL", txt(f, "url", { id: id + "-url", dir: "ltr", ph: "ms-powerautomate:/console/flow/run?environmentid=…&workflowid=…&source=Other" }),
         "In Power Automate Desktop: the flow's ⋯ → Properties → Run URL. Create input variables in the flow with the same names as the parameters below."),
       h("div", { class: "fld-l" }, "Parameters"),

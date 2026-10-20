@@ -261,6 +261,7 @@ textarea.inp { resize: vertical; min-height: 34px; display: block; }
 .pv-flow-name { font-size: 9.5px; margin-top: 3px; color: var(--d-text); }
 .pv-flow-params { font-size: 9px; color: var(--d-muted); }
 .pv-flow-none { color: var(--d-muted); }
+.paper a.pv-btn-link { background: var(--d-primary); color: #fff; font-weight: 700; padding: 1px 6px; border-radius: 3px; text-decoration: none; }
 .flash { animation: flash 1s ease-out; }
 @keyframes flash { from { box-shadow: 0 0 0 4px rgba(31, 111, 178, .55); } to { box-shadow: 0 0 0 4px rgba(31, 111, 178, 0); } }
 

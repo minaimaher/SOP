@@ -7,7 +7,7 @@
     return global.SOPDocx.parseInline(text).map(s => {
       let h = esc(s.t).replace(/\n/g, "<br>");
       if (s.code) h = `<code>${h}</code>`;
-      if (s.link) h = `<a href="${esc(s.link)}" target="_blank" rel="noopener">${h}</a>`;
+      if (s.link) h = `<a href="${esc(s.link)}" target="_blank" rel="noopener"${s.button ? ' class="pv-btn-link"' : ""}>${h}</a>`;
       if (s.b) h = `<strong>${h}</strong>`;
       return h;
     }).join("");
