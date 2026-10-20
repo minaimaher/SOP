@@ -116,7 +116,7 @@
             if (ln) inner += `<w:r>${this.rPr({ ...opt, rtl: p.d === "r" })}<w:t xml:space="preserve">${x(ln)}</w:t></w:r>`;
           });
         }
-        if (seg.link && /^https?:\/\//i.test(seg.link)) {
+        if (seg.link && /^(https?:\/\/|ms-powerautomate:)/i.test(seg.link)) {
           const id = this.rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink", seg.link, true);
           xml += `<w:hyperlink r:id="${id}" w:history="1">${inner}</w:hyperlink>`;
         } else xml += inner;
@@ -266,7 +266,7 @@
           return this.dataTable({
             ...b,
             columns: [...pad(b.columns), b.flowTitle || t.flowCol],
-            rows: (b.rows || []).map((r, ri) => [...pad(r), A.flowSummary(A.rowFlow(b, ri), t)]),
+            rows: (b.rows || []).map((r, ri) => [...pad(r), A.flowSummary(b, ri, t)]),
             widths: ok ? [...b.widths.map(Number), b.widths.reduce((a, c) => a + +c, 0) / n * 1.2] : null
           }, width);
         }

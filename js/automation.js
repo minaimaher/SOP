@@ -151,11 +151,26 @@
     return out;
   }
 
-  /** Short text for the Word document: flow name and its parameter names. */
-  function flowSummary(flow, t) {
+  /**
+   * Run URL for a row in the Word document, where nobody can type values: it carries the parameters that have a
+   * default (e.g. {Fix #}); the others are left out so Power Automate Desktop uses the flow's own defaults.
+   */
+  function rowRunUrl(table, ri) {
+    const flow = rowFlow(table, ri);
     if (!flow) return "";
+    const vals = rowDefaults(table, ri, flow);
+    const params = (flow.params || []).filter(p => p.name && (p.type === "yesno" ? String(p.default ?? "") !== "" : String(vals[p.name] ?? "") !== ""));
+    // ( ) would end the [text](url) markup
+    return desktopUrl({ ...flow, params }, vals).replace(/\(/g, "%28").replace(/\)/g, "%29");
+  }
+
+  /** Text for the Word document: the flow name as a link that runs the flow, then its parameter names. */
+  function flowSummary(table, ri, t) {
+    const flow = rowFlow(table, ri);
+    if (!flow) return "";
+    const name = String(flow.name || t.flowCol).replace(/[\[\]`*]/g, "");
     const names = (flow.params || []).filter(p => p.name).map(p => "`" + p.name + "`");
-    return [flow.name || t.flowCol, names.length ? `${t.params}: ${names.join(", ")}` : ""].filter(Boolean).join("\n");
+    return [`[▶ ${name}](${rowRunUrl(table, ri)})`, names.length ? `${t.params}: ${names.join(", ")}` : ""].filter(Boolean).join("\n");
   }
 
   /** Opens a link (separate so tests can replace it). */
@@ -169,5 +184,5 @@
     a.remove();
   }
 
-  global.SOPAutomation = { KINDS, TYPES, coerce, validate, values, desktopUrl, linkUrl, cloudBody, schema, splitOptions, rowFlow, rowDefaults, flowSummary, postCloud, postCloudSimple, openUrl };
+  global.SOPAutomation = { KINDS, TYPES, coerce, validate, values, desktopUrl, linkUrl, cloudBody, schema, splitOptions, rowFlow, rowDefaults, rowRunUrl, flowSummary, postCloud, postCloudSimple, openUrl };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -79,7 +79,7 @@ The Part J fix index and the service request catalog have a **Desktop flow** col
    - **Parameters:** each one needs a name that matches an **input variable** in the flow. You also set its label, type, default value and whether it is required. A default like `{Fix #}` or `{Request #}` fills in that column's value from the row.
 3. On the SOP page, **▶ Run** asks for the parameter values, then opens Power Automate Desktop with them as `inputArguments`. Power Automate Desktop then asks you to confirm the run.
 
-Any other table can have the column too: tick **Power Automate Desktop column** under the table. Moving, copying or deleting a row moves its flow with it. The Word document shows the flow name and parameter names in the column, but not the Run URL. Manuals saved before this change get the column on both Part J tables automatically.
+Any other table can have the column too: tick **Power Automate Desktop column** under the table. Moving, copying or deleting a row moves its flow with it. In the Word document, the column shows **▶ flow name** as a link: clicking it in Word opens Power Automate Desktop and runs that flow, after Word's and Power Automate Desktop's confirmation prompts. Nobody can type values in a Word file, so the link passes only the parameters that have a default value, for example `{Fix #}` becomes `CRM-FIX-01`. The flow uses its own default values for the other input variables, so give those input variables sensible defaults in Power Automate Desktop, or leave them empty and ask for them inside the flow. Manuals saved before this change get the column on both Part J tables automatically.
 
 ## Run Power Automate flows from the SOP page
 
