@@ -175,5 +175,6 @@ Then add `<script src="presets/my-sop.js"></script>` to `index.html` next to the
 | `SETUP.md` | Record of the live configuration: GitHub Pages, Firebase project and console settings |
 | `firestore.rules` | Firestore security rules: each user can access only their own data |
 | `presets/` | The Arabic and English CRM manuals as starting documents |
+| `tools/bump-version.sh` | Run before each release: adds a new `?v=` to the file links so browsers load the new version at once |
 | `tools/import_docx.py` | Converts an existing Word manual into a preset |
 | `vendor/jszip.min.js` | JSZip 3.10.1 (MIT), bundled so the site works offline |
