@@ -271,6 +271,22 @@
           return this.p(this.runs(title, this.rtlRun({})), { style: "Heading2", keepNext: true }) +
             this.cardHeader(b, id, width) + this.blocks(b.blocks, width, ctx);
         }
+        case "automation": {
+          // The document records which flow automates the step and its parameters; the Run button lives on the SOP page.
+          const t = global.SOPModel.tx(this.doc).auto, w = t.word;
+          const kind = ["cloud", "desktop", "link"].includes(b.kind) ? b.kind : "cloud";
+          let xml = this.p(this.runs(`${w.label}: ${b.title || ""}`, this.rtlRun({})), { style: "SubLabel" });
+          xml += this.p(this.runs(`${w.type}: ${t.kinds[kind]}`, this.rtlRun({ color: this.c.muted, size: 19 })), body);
+          if (b.description) xml += this.p(this.runs(b.description, this.rtlRun({})), body);
+          const params = (b.params || []).filter(p => p.name);
+          if (params.length) xml += this.dataTable({
+            columns: [w.param, w.desc, w.type, w.required],
+            rows: params.map(p => ["`" + p.name + "`", p.label || "", p.type || "text", p.required ? w.yes : w.no]),
+            widths: [3, 5, 2, 2]
+          }, width);
+          if (b.showInWord && b.url) xml += this.p(this.runs(`${w.link}: \`${b.url}\``, this.rtlRun({ size: 18 })), body);
+          return xml;
+        }
         case "pagebreak":
           return `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
         default:

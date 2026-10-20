@@ -68,6 +68,39 @@ Everything is in the **Manual ▾** menu next to **New**:
 - **Signed in:** they're saved to your account, so they follow you to any computer.
 - **First sign-in:** the account starts with the manuals and templates from that browser.
 
+## Run Power Automate flows from the SOP page
+
+Inside a procedure card (or a part), choose **+ Add item → Power Automate flow (Run button)**. The item shows a small form and a **Run** button on the SOP page. Whoever follows the procedure fills in the values and starts the flow from there.
+
+In the editor, set:
+- **Flow type**, one of:
+  - **Cloud flow:** a flow that starts with the trigger *When an HTTP request is received*. The Run button POSTs the values as JSON. It asks for confirmation first.
+  - **Desktop flow:** a Power Automate Desktop flow. The Run button opens its run URL with the values as `inputArguments`, and Power Automate Desktop asks you to confirm the run.
+  - **Other link:** any address with `{parameterName}` placeholders, opened in a new tab.
+- **Flow link**, the address of the flow (see below).
+- **Parameters.** Each one has:
+  - a name: the exact name the flow expects
+  - a label shown on the page
+  - a type: text, number, date, yes/no or choice
+  - a default value, and whether it is required
+- **Also send where it was run from** (cloud flows). Adds a `sop` object with the manual, document ID, part, procedure ID and title, the signed-in user, the time and the page address. Use it in the flow to log or comment on the ticket.
+- **Show the link in the Word document.** Off by default. The Word file always lists the automation and its parameters.
+
+**Cloud flow setup**
+1. In Power Automate, create a flow with the trigger **When an HTTP request is received**.
+2. In the builder, click **Show request schema**, copy it, and paste it into the trigger's *Request Body JSON Schema*. The parameters then appear as dynamic content.
+3. Save the flow, copy its **HTTP POST URL** into **Flow link**.
+4. To let the page show "Flow started", end the flow's first steps with a **Response** action (status 202), and allow this site's origin if your tenant restricts it.
+
+If the browser can't read the reply (blocked by CORS), the page says it could not confirm the start and offers **Send without reading the reply**. It never resends automatically, so check the flow's run history first. A flow sent that way receives the JSON as text, so add **Parse JSON** on `triggerBody()`.
+
+**Desktop flow setup**
+1. In the flow, create **input variables** with the same names as the parameters.
+2. In Power Automate Desktop, open the flow's **⋯ → Properties** and copy the **Run URL** (`ms-powerautomate:/console/flow/run?...`) into **Flow link**.
+3. The machine running the SOP page needs Power Automate Desktop installed and signed in.
+
+> **Security:** anyone who has a cloud flow's HTTP URL can start the flow, because the link contains its own key. The link is saved with the manual, in this browser or your account, not on the public site. It does travel with an exported `.sop.json` file, and with the Word file if you show it there. Add checks in the flow too, such as allowed callers or a check on the ticket number.
+
 ## Set up sign-in (Firebase)
 
 Sign-in stays off until the site has Firebase settings. Firebase's free plan is enough. You only do this once.
@@ -116,6 +149,7 @@ Then add `<script src="presets/my-sop.js"></script>` to `index.html` next to the
 | `js/model.js` | Document model, card numbering and the library of parts, cards and items |
 | `js/docx-writer.js` | Builds the Word document (WordprocessingML, zipped with JSZip) |
 | `js/preview.js` | Live HTML preview |
+| `js/automation.js` | Power Automate items: request body, desktop run URL, link placeholders, schema, sending |
 | `js/app.js` | Editor |
 | `js/store.js` | Saving: this browser (IndexedDB) or the signed-in user's Firebase account; sign-in |
 | `js/firebase-config.js` | Your Firebase settings (sign-in is off while this is `null`) |

@@ -48,7 +48,19 @@
         service: ["The requester raises the request in the service portal with all required details attached.", "The approver approves before any work starts.", "Fulfil the request as a standard change.", "Verify the result with the requester.", "Close the ticket with the approval reference and evidence."],
         generic: ["First step", "Second step", "Third step"]
       },
-      guidelines: ["Rule or do / don't note.", "Another rule."]
+      guidelines: ["Rule or do / don't note.", "Another rule."],
+      auto: {
+        title: "Run the automated steps", ticket: "Jira ticket number",
+        kinds: { cloud: "Power Automate · cloud flow", desktop: "Power Automate · desktop flow", link: "Link" },
+        run: { cloud: "Run flow", desktop: "Run in Power Automate Desktop", link: "Open link" },
+        confirm: "Start “{0}” now with these values?", yes: "Start", cancel: "Cancel", yesValue: "Yes", noValue: "No", choose: "Choose…",
+        sending: "Starting the flow…", ok: "Flow started ({0}).", okOpaque: "Sent. This page cannot read the flow's reply; check the run history in Power Automate.",
+        failed: "The flow did not start: {0}", unknown: "Could not confirm that the flow started (the browser blocked or lost the reply). Check the flow's run history before trying again.",
+        simple: "Send without reading the reply", opened: "Opened Power Automate Desktop. Confirm the run there.", openedLink: "Link opened in a new tab.",
+        noUrl: "Add the flow link to this item in the editor first.", required: "Fill in “{0}”.", number: "“{0}” must be a number.",
+        desktopUrl: "A desktop flow link must start with ms-powerautomate:", cloudUrl: "A cloud flow link must start with https://",
+        word: { label: "Automation", type: "Type", param: "Parameter", desc: "Description", required: "Required", yes: "Yes", no: "No", link: "Link" }
+      }
     },
     ar: {
       tocTitle: "المحتويات", pageLabel: "صفحة", ofLabel: "من",
@@ -91,7 +103,19 @@
         service: ["يرفع مقدّم الطلب الطلب في بوابة الخدمة مع إرفاق جميع التفاصيل المطلوبة.", "يعتمد المعتمِد الطلب قبل البدء في أي خطوة.", "نفّذ الطلب بوصفه تغييرًا قياسيًا.", "تحقّق من النتيجة مع مقدّم الطلب.", "أغلق التذكرة مع مرجع الاعتماد والأدلة."],
         generic: ["الخطوة الأولى", "الخطوة الثانية", "الخطوة الثالثة"]
       },
-      guidelines: ["قاعدة أو ملاحظة لما يجب وما لا يجب فعله.", "قاعدة أخرى."]
+      guidelines: ["قاعدة أو ملاحظة لما يجب وما لا يجب فعله.", "قاعدة أخرى."],
+      auto: {
+        title: "تشغيل الخطوات المؤتمتة", ticket: "رقم تذكرة Jira",
+        kinds: { cloud: "Power Automate · تدفق سحابي", desktop: "Power Automate · تدفق سطح المكتب", link: "رابط" },
+        run: { cloud: "تشغيل التدفق", desktop: "تشغيل في Power Automate Desktop", link: "فتح الرابط" },
+        confirm: "هل تريد بدء «{0}» الآن بهذه القيم؟", yes: "بدء", cancel: "إلغاء", yesValue: "نعم", noValue: "لا", choose: "اختر…",
+        sending: "جارٍ بدء التدفق…", ok: "بدأ التدفق ({0}).", okOpaque: "أُرسل الطلب. لا يمكن لهذه الصفحة قراءة رد التدفق؛ راجع سجل التشغيل في Power Automate.",
+        failed: "لم يبدأ التدفق: {0}", unknown: "تعذّر التأكد من بدء التدفق (حظر المتصفح الرد أو فُقد). راجع سجل تشغيل التدفق قبل المحاولة مرة أخرى.",
+        simple: "إرسال دون قراءة الرد", opened: "فُتح Power Automate Desktop. أكّد التشغيل هناك.", openedLink: "فُتح الرابط في علامة تبويب جديدة.",
+        noUrl: "أضف رابط التدفق إلى هذا العنصر في المحرر أولًا.", required: "أدخل «{0}».", number: "يجب أن يكون «{0}» رقمًا.",
+        desktopUrl: "يجب أن يبدأ رابط تدفق سطح المكتب بـ ms-powerautomate:", cloudUrl: "يجب أن يبدأ رابط التدفق السحابي بـ https://",
+        word: { label: "الأتمتة", type: "النوع", param: "المُعامل", desc: "الوصف", required: "إلزامي", yes: "نعم", no: "لا", link: "الرابط" }
+      }
     }
   };
   const tx = doc => T[(doc && doc.settings && doc.settings.lang) === "ar" ? "ar" : "en"];
@@ -135,6 +159,10 @@
     { key: "glossary", group: "Tables", label: "Glossary", make: t => table(t, "glossary") },
     { key: "contacts", group: "Tables", label: "Contacts", make: t => table(t, "contacts") },
     { key: "image", group: "Other", label: "Image / diagram", make: () => ({ type: "image", src: "", width: 6, ratio: 0.75, caption: "" }) },
+    { key: "automation", group: "Automation", label: "Power Automate flow (Run button)", make: t => ({
+      type: "automation", title: t.auto.title, kind: "cloud", url: "", description: "",
+      params: [{ name: "ticketNumber", label: t.auto.ticket, type: "text", required: true, default: "", options: "" }],
+      sendContext: true, showInWord: false }) },
     { key: "pagebreak", group: "Other", label: "Page break", make: () => ({ type: "pagebreak" }) }
   ];
 

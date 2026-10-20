@@ -361,7 +361,7 @@
   }
 
   /* ---------- block editors ---------- */
-  const TYPE_LABEL = { heading: "Heading", paragraph: "Paragraph", note: "Note", bullets: "Bullet list", steps: "Numbered steps", checklist: "Checklist", table: "Table", image: "Image", pagebreak: "Page break", card: "Procedure card" };
+  const TYPE_LABEL = { heading: "Heading", paragraph: "Paragraph", note: "Note", bullets: "Bullet list", steps: "Numbered steps", checklist: "Checklist", table: "Table", image: "Image", pagebreak: "Page break", automation: "Power Automate flow", card: "Procedure card" };
 
   function blockList(d, list, ctx) {
     const wrap = h("div", { class: "blocks" });
@@ -396,6 +396,7 @@
       case "bullets": case "steps": case "checklist": return listEditor(b, rer);
       case "table": return tableEditor(b, rer);
       case "image": return imageEditor(b, rer);
+      case "automation": return automationEditor(b, rer);
       case "pagebreak": return h("p", { class: "hint" }, "The next item starts on a new page.");
       default: return h("p", { class: "hint" }, "Unsupported item.");
     }
@@ -474,6 +475,57 @@
     toast(`${replace ? "Table replaced" : rows.length + " rows added"}`);
   }
 
+  /* Power Automate item: flow link, parameters and what the Run button sends. */
+  const A = window.SOPAutomation;
+  const KIND_LABEL = { cloud: "Cloud flow — trigger “When an HTTP request is received”", desktop: "Desktop flow — run URL (ms-powerautomate:)", link: "Other link with {parameters}" };
+  const KIND_HINT = {
+    cloud: "Paste the HTTP POST URL from the flow's trigger. The Run button sends the values as JSON.",
+    desktop: "In Power Automate Desktop: flow ⋯ → Properties → Run URL. The values are passed as the flow's input variables (same names).",
+    link: "Any address. Put {parameterName} where a value goes, e.g. https://jira…/browse/{ticketNumber}"
+  };
+  const TYPE_NAMES = { text: "Text", number: "Number", date: "Date", yesno: "Yes / No", choice: "Choice" };
+  function automationEditor(b, rer) {
+    b.params = b.params || [];
+    if (b.sendContext === undefined) b.sendContext = true;
+    const id = "auto-" + b.id;
+    const kind = h("select", { class: "inp", id: id + "-kind", onchange: e => { b.kind = e.target.value; rer(); } }, A.KINDS.map(k => h("option", { value: k }, KIND_LABEL[k])));
+    kind.value = A.KINDS.includes(b.kind) ? b.kind : "cloud";
+    const rows = h("div", { class: "auto-params" });
+    if (!b.params.length) rows.append(h("p", { class: "hint" }, "No parameters. The flow runs without input values."));
+    b.params.forEach((p, i) => {
+      const type = h("select", { class: "inp", onchange: e => { p.type = e.target.value; rer(); } }, A.TYPES.map(k => h("option", { value: k }, TYPE_NAMES[k])));
+      type.value = p.type || "text";
+      const req = h("input", { type: "checkbox", onchange: e => { p.required = e.target.checked; changed(); } });
+      req.checked = !!p.required;
+      rows.append(h("div", { class: "auto-param" },
+        h("div", { class: "auto-param-grid" },
+          field("Name in the flow", txt(p, "name", { id: `${id}-p${i}-name`, dir: "ltr", ph: "ticketNumber" })),
+          field("Label on the page", txt(p, "label", { id: `${id}-p${i}-label` })),
+          field("Type", type),
+          field("Default value", txt(p, "default", { id: `${id}-p${i}-def`, ph: p.type === "yesno" ? "true or false" : "" })),
+          p.type === "choice" ? field("Choices (comma separated)", txt(p, "options", { id: `${id}-p${i}-opt` })) : null,
+          h("label", { class: "chk" }, req, h("span", null, "Required"))),
+        tools(b.params, i, rer, "Parameter")));
+    });
+    const schemaBtn = b.kind === "desktop" || b.kind === "link" ? null : btn("Show request schema", () => {
+      const json = JSON.stringify(A.schema(b), null, 2);
+      sheet("Request body JSON schema",
+        h("p", { class: "hint" }, "Paste this into the trigger “When an HTTP request is received” → Request Body JSON Schema. The values then appear as dynamic content in the flow."),
+        h("textarea", { class: "inp code", rows: 14, readonly: true, dir: "ltr", id: "schema-text" }, json),
+        h("div", { class: "row-inline" }, btn("Copy", () => navigator.clipboard.writeText(json).then(() => toast("Copied"), () => toast("Select the text and copy it")), "primary")));
+    });
+    return h("div", { class: "auto-ed" },
+      field("Title", txt(b, "title", { id: id + "-title" })),
+      field("Flow type", kind),
+      field("Flow link", txt(b, "url", { id: id + "-url", dir: "ltr", ph: b.kind === "desktop" ? "ms-powerautomate:/console/flow/run?environmentid=…&workflowid=…&source=Other" : "https://…" }), KIND_HINT[kind.value]),
+      field("Description", txt(b, "description", { id: id + "-desc", multi: true, rows: 2 })),
+      h("div", { class: "fld-l" }, "Parameters"), rows,
+      h("div", { class: "row-inline" }, btn("+ Add parameter", () => { b.params.push({ name: "", label: "", type: "text", required: false, default: "", options: "" }); rer(); }, "add"), schemaBtn),
+      kind.value === "cloud" ? check(b, "sendContext", "Also send where it was run from (manual, procedure, user, time)") : null,
+      check(b, "showInWord", "Show the link in the Word document"),
+      kind.value === "cloud" ? h("p", { class: "warn" }, "Anyone who has a cloud flow link can start that flow. Keep the link out of public pages and the Word file unless that is intended.") : null);
+  }
+
   function imageEditor(b, rer) {
     const id = "img-" + b.id;
     const file = h("input", { type: "file", accept: "image/png,image/jpeg,image/gif", id, hidden: true, onchange: e => readImage(e.target.files[0], (src, ratio) => { b.src = src; b.ratio = ratio; rer(); }) });
@@ -499,6 +551,7 @@
     pv.setAttribute("lang", d.settings.lang);
     pv.setAttribute("style", window.SOPPreview.themeVars(d) + `;font-family:'${(d.settings.font || "Calibri").replace(/'/g, "")}', ${d.settings.lang === "ar" ? "'IBM Plex Sans Arabic', " : ""}Carlito, 'IBM Plex Sans', system-ui, sans-serif`);
     pv.innerHTML = window.SOPPreview.render(d);
+    restoreRuns(pv);
     $("previewPane").scrollTop = top;
     $("stats").textContent = stats(d);
   }
@@ -513,7 +566,94 @@
       if (el) { const pane = $("previewPane"); pane.scrollTo({ top: el.offsetTop - 16, behavior: "smooth" }); el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 1000); }
     }, 60);
   }
+  /* ---------- Power Automate Run buttons ---------- */
+  const runValues = {};   // block id → {param: value} typed on the page (kept across preview refreshes)
+  const runStatus = {};   // block id → {cls, text, simple}
+  function findAuto(id) {
+    const d = doc();
+    for (const s of d.sections) for (const b of s.blocks) {
+      if (b.id === id) return { block: b, sec: s };
+      if (b.type === "card") for (const c of b.blocks || []) if (c.id === id) return { block: c, sec: s, card: b };
+    }
+    return null;
+  }
+  const readField = el => el.type === "checkbox" ? el.checked : el.value;
+  function rawValues(box) {
+    const raw = {};
+    box.querySelectorAll("[data-param]").forEach(el => { raw[el.dataset.param] = readField(el); });
+    return raw;
+  }
+  function restoreRuns(pv) {
+    pv.querySelectorAll("[data-auto]").forEach(box => {
+      const v = runValues[box.dataset.auto];
+      if (v) box.querySelectorAll("[data-param]").forEach(el => {
+        if (!(el.dataset.param in v)) return;
+        if (el.type === "checkbox") el.checked = !!v[el.dataset.param]; else el.value = v[el.dataset.param];
+      });
+      drawStatus(box);
+    });
+  }
+  function setStatus(box, st) { runStatus[box.dataset.auto] = st; drawStatus(box); }
+  function drawStatus(box) {
+    const st = runStatus[box.dataset.auto], out = box.querySelector(".pv-auto-status");
+    out.textContent = ""; out.className = "pv-auto-status";
+    if (!st) return;
+    if (st.cls) out.classList.add(st.cls);
+    out.append(h("span", null, st.text));
+    if (st.confirm) out.append(h("span", { class: "pv-auto-btns" },
+      h("button", { type: "button", class: "pv-auto-run", "data-act": "start" }, st.yes),
+      h("button", { type: "button", class: "pv-auto-sec", "data-act": "cancel" }, st.no)));
+    if (st.simple) out.append(h("span", { class: "pv-auto-btns" }, h("button", { type: "button", class: "pv-auto-sec", "data-act": "simple" }, st.simple)));
+  }
+  function runContext(found) {
+    const d = doc();
+    const docField = (d.cover.fields || []).find(f => /document|المستند|الوثيقة|^id$|رقم/i.test(f.label || ""));
+    return {
+      manual: d.name || "", documentId: docField ? docField.value || "" : "", part: found.sec.title || "",
+      procedureId: found.card ? M.cardId(d, found.card) : "", procedure: found.card ? found.card.title || "" : "",
+      automation: found.block.title || "", runBy: user ? user.email || user.uid : "not signed in",
+      runAt: new Date().toISOString(), page: location.href.split("#")[0]
+    };
+  }
+  async function runAuto(box, act) {
+    const found = findAuto(box.dataset.auto);
+    if (!found) return;
+    const b = found.block, tx = t().auto, raw = rawValues(box);
+    runValues[b.id] = raw;
+    if (act === "cancel") return setStatus(box, null);
+    const problems = A.validate(b, raw, tx);
+    if (problems.length) return setStatus(box, { cls: "bad", text: problems.join(" ") });
+    const kind = A.KINDS.includes(b.kind) ? b.kind : "cloud";
+    if (kind === "desktop") { A.openUrl(A.desktopUrl(b, raw)); return setStatus(box, { cls: "ok", text: tx.opened }); }
+    if (kind === "link") { A.openUrl(A.linkUrl(b, raw), true); return setStatus(box, { cls: "ok", text: tx.openedLink }); }
+    const body = A.cloudBody(b, raw, runContext(found));
+    if (act === "simple") {
+      setStatus(box, { text: tx.sending });
+      try { await A.postCloudSimple(b.url.trim(), body); setStatus(box, { cls: "ok", text: tx.okOpaque }); }
+      catch (e) { setStatus(box, { cls: "bad", text: tx.failed.replace("{0}", e.message || "network error") }); }
+      return;
+    }
+    if (act !== "start") return setStatus(box, { confirm: true, text: tx.confirm.replace("{0}", b.title || ""), yes: tx.yes, no: tx.cancel });
+    box.querySelectorAll("button").forEach(x => x.disabled = true);
+    setStatus(box, { text: tx.sending });
+    const r = await A.postCloud(b.url.trim(), body);
+    box.querySelectorAll("button").forEach(x => x.disabled = false);
+    if (r.ok) setStatus(box, { cls: "ok", text: tx.ok.replace("{0}", r.status) });
+    else if (r.unknown) setStatus(box, { cls: "warn", text: tx.unknown, simple: tx.simple });
+    else setStatus(box, { cls: "bad", text: tx.failed.replace("{0}", `${r.status} ${(r.text || "").slice(0, 200)}`.trim()) });
+  }
+  ["input", "change"].forEach(ev => $("paper").addEventListener(ev, e => {
+    const el = e.target.closest("[data-param]"), box = el && el.closest("[data-auto]");
+    if (box) runValues[box.dataset.auto] = { ...(runValues[box.dataset.auto] || {}), [el.dataset.param]: readField(el) };
+  }));
+
   $("paper").addEventListener("click", e => {
+    const autoBox = e.target.closest("[data-auto]");
+    if (autoBox && e.target.closest(".pv-auto-form, .pv-auto-actions, .pv-auto-status")) {
+      const b = e.target.closest("button");
+      if (b && !b.disabled) runAuto(autoBox, b.dataset.act || "run");
+      return;
+    }
     const el = e.target.closest("[data-id]");
     if (!el || e.target.closest("a")) return;
     const id = el.dataset.id, d = doc();

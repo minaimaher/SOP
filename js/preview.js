@@ -51,12 +51,40 @@
       case "image": return b.src ? `<figure class="pv-fig" ${id}><img src="${esc(b.src)}" alt="${esc(b.alt || "")}" style="width:${Math.min(+b.width || 6, 6.7) / 6.7 * 100}%">${b.caption ? `<figcaption>${inline(b.caption)}</figcaption>` : ""}</figure>`
         : `<div class="pv-empty" ${id}>Image: choose a file</div>`;
       case "pagebreak": return `<div class="pv-break" ${id}><span>page break</span></div>`;
+      case "automation": return automation(doc, b, id);
       case "card": {
         const cid = global.SOPModel.cardId(doc, b);
         return `<section class="pv-card" ${id}><h3 class="pv-h2">${esc(cid)} · ${inline(b.title)}</h3>${cardHeader(doc, b, cid)}${(b.blocks || []).map(c => block(doc, c)).join("")}</section>`;
       }
       default: return "";
     }
+  }
+
+  /* Power Automate item: a small form and a Run button. app.js handles the clicks. */
+  function automation(doc, b, id) {
+    const t = global.SOPModel.tx(doc).auto;
+    const kind = ["cloud", "desktop", "link"].includes(b.kind) ? b.kind : "cloud";
+    const fields = (b.params || []).filter(p => p.name).map(p => {
+      const name = esc(p.name), label = esc(p.label || p.name) + (p.required ? " *" : "");
+      if (p.type === "yesno")
+        return `<label class="pv-auto-f pv-auto-chk"><input type="checkbox" data-param="${name}"${p.default === "true" ? " checked" : ""}><span>${label}</span></label>`;
+      let control;
+      if (p.type === "choice") {
+        const opts = global.SOPAutomation.splitOptions(p.options);
+        control = `<select data-param="${name}"><option value="">${esc(t.choose)}</option>${opts.map(o => `<option${o === p.default ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+      } else {
+        const type = p.type === "number" ? "number" : p.type === "date" ? "date" : "text";
+        control = `<input type="${type}" data-param="${name}" value="${esc(p.default || "")}">`;
+      }
+      return `<label class="pv-auto-f"><span>${label}</span>${control}</label>`;
+    }).join("");
+    return `<section class="pv-auto" ${id} data-auto="${esc(b.id)}">` +
+      `<div class="pv-auto-kind">${esc(t.kinds[kind])}</div>` +
+      `<h4 class="pv-auto-title">${inline(b.title || "")}</h4>` +
+      (b.description ? `<p class="pv-p">${inline(b.description)}</p>` : "") +
+      (fields ? `<div class="pv-auto-form">${fields}</div>` : "") +
+      `<div class="pv-auto-actions"><button type="button" class="pv-auto-run" data-run="${esc(b.id)}">${esc(t.run[kind])}</button></div>` +
+      `<div class="pv-auto-status" data-status="${esc(b.id)}" role="status"></div></section>`;
   }
 
   function render(doc) {
