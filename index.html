@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Carlito:wght@400;700&display=swap">
-<link rel="stylesheet" href="css/app.css?v=202610202008">
+<link rel="stylesheet" href="css/app.css?v=202610202015">
 </head>
 <body>
 <div class="app">
@@ -19,8 +19,11 @@
       <div id="manualMenu"></div>
       <input type="file" id="importFile" accept=".json,application/json" hidden>
     </div>
+    <div class="panels" id="panelToggles" role="group" aria-label="Show or hide panels">
+      <button type="button" class="seg" data-panel="outline" aria-pressed="true">Outline</button><button type="button" class="seg" data-panel="editor" aria-pressed="true">Editor</button><button type="button" class="seg" data-panel="preview" aria-pressed="true">Preview</button>
+    </div>
     <div class="actions">
-      <button class="btn" id="previewBtn" type="button" title="Open the Word document view in a new tab">Preview</button>
+      <button class="btn" id="previewBtn" type="button" title="Open the Word document view in a new tab">Preview page ↗</button>
       <button class="btn primary" id="docxBtn" type="button">Download Word (.docx)</button>
       <div id="account"></div>
     </div>
@@ -41,7 +44,7 @@
     <section class="pane editor" id="editor" aria-label="Editor"></section>
     <div class="split" data-split="preview" role="separator" aria-orientation="vertical" aria-label="Resize preview" tabindex="0" title="Drag to resize · double-click to reset"></div>
     <section class="pane preview" id="previewPane" aria-label="Preview">
-      <div class="pv-bar"><span id="stats"></span><span id="saveState">Loading…</span></div>
+      <div class="pv-bar"><span id="stats"></span><span class="pv-bar-end"><span id="saveState">Loading…</span><button type="button" class="pane-hide" data-hide="preview" title="Hide the preview" aria-label="Hide the preview">✕</button></span></div>
       <article class="paper" id="paper"></article>
     </section>
   </main>
@@ -55,15 +58,15 @@
 </div>
 <div class="toast" id="toast" hidden role="status"></div>
 
-<script src="vendor/jszip.min.js?v=202610202008"></script>
-<script src="presets/sdb-crm-sop-ar.js?v=202610202008"></script>
-<script src="presets/sdb-crm-sop-en.js?v=202610202008"></script>
-<script src="js/model.js?v=202610202008"></script>
-<script src="js/docx-writer.js?v=202610202008"></script>
-<script src="js/automation.js?v=202610202008"></script>
-<script src="js/preview.js?v=202610202008"></script>
-<script src="js/firebase-config.js?v=202610202008"></script>
-<script src="js/store.js?v=202610202008"></script>
-<script src="js/app.js?v=202610202008"></script>
+<script src="vendor/jszip.min.js?v=202610202015"></script>
+<script src="presets/sdb-crm-sop-ar.js?v=202610202015"></script>
+<script src="presets/sdb-crm-sop-en.js?v=202610202015"></script>
+<script src="js/model.js?v=202610202015"></script>
+<script src="js/docx-writer.js?v=202610202015"></script>
+<script src="js/automation.js?v=202610202015"></script>
+<script src="js/preview.js?v=202610202015"></script>
+<script src="js/firebase-config.js?v=202610202015"></script>
+<script src="js/store.js?v=202610202015"></script>
+<script src="js/app.js?v=202610202015"></script>
 </body>
 </html>

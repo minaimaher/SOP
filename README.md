@@ -52,7 +52,8 @@ Text formatting inside any field: `**bold**`, `` `code` `` and `[link text](http
 
 ### Preview page and panel sizes
 
-- **Preview** (next to *Download Word*) opens the Word document view of the current manual in a new tab. It updates while you edit in the builder tab, and has a zoom slider and **Print / Save as PDF**. In the Desktop flow column, its Run buttons open the flow the same way the Word file does.
+- **Preview page ↗** (next to *Download Word*) opens the Word document view of the current manual in a new tab. It updates while you edit in the builder tab, and has a zoom slider and **Print / Save as PDF**. In the Desktop flow column, its Run buttons open the flow the same way the Word file does.
+- **Show or hide panels** with the **Outline / Editor / Preview** buttons in the header, or the ✕ at the top of each panel. At least one panel stays open, and your choice is remembered.
 - **Resize the panels.** Drag the line between the outline and the editor, or between the editor and the preview. You can also select the line with Tab and use the ← → keys. Double-click the line to go back to the default size. The sizes are remembered in this browser.
 
 ### Saving, versions and templates

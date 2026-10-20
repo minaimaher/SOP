@@ -146,12 +146,15 @@
       btn("⧉", () => { const c = M.clone(arr[i]); reId(c); arr.splice(i + 1, 0, c); linked.forEach(l => l.splice(i + 1, 0, l[i] == null ? null : M.clone(l[i]))); rerender(); }, "icon", "Duplicate"),
       btn("✕", () => removeWithUndo(arr, i, rerender, what, linked), "icon danger", what ? "Delete " + what.toLowerCase() : "Remove"));
   }
+  const PANE_NAME = { outline: "outline", editor: "editor", preview: "preview" };
+  const paneHideBtn = k => h("button", { type: "button", class: "pane-hide", "data-hide": k, title: `Hide the ${PANE_NAME[k]}`, "aria-label": `Hide the ${PANE_NAME[k]}` }, "✕");
   function reId(b) { if (b && typeof b === "object" && !Array.isArray(b)) { b.id = M.uid(); (b.blocks || []).forEach(reId); } }
 
   /* ---------- outline ---------- */
   function renderOutline() {
     const d = doc(), ol = $("outline");
     ol.textContent = "";
+    ol.append(h("div", { class: "pane-head" }, h("span", null, "Outline"), paneHideBtn("outline")));
     const item = (label, kind, extra, active, sub) => h("button", {
       type: "button", class: "ol-item" + (active ? " active" : "") + (sub ? " sub" : ""), dir: "auto",
       onclick: () => select({ kind, ...extra })
@@ -204,6 +207,7 @@
     const ed = $("editor");
     const keep = ed.scrollTop;
     ed.textContent = "";
+    ed.append(h("div", { class: "pane-head floating" }, paneHideBtn("editor")));
     const d = doc();
     if (sel.kind === "settings") ed.append(...settingsEditor(d));
     else if (sel.kind === "cover") ed.append(...coverEditor(d));
@@ -950,11 +954,43 @@
   /* ---------- resizable panes ---------- */
   const LAYOUT_KEY = "sop-builder-layout";
   const work = $("work");
+  const PANELS = ["outline", "editor", "preview"];
+  const narrow = window.matchMedia("(max-width: 900px)");   // phones use the Outline / Edit / Preview tabs instead
   function applyLayout(l) {
     for (const k of ["outline", "preview"]) {
       if (l && l[k]) work.style.setProperty("--w-" + k, l[k] + "px"); else work.style.removeProperty("--w-" + k);
     }
+    const hid = (l && l.hidden) || {};
+    const on = k => !hid[k] || narrow.matches;
+    PANELS.forEach(k => {
+      work.classList.toggle("hide-" + k, !on(k));
+      const b = document.querySelector(`#panelToggles [data-panel="${k}"]`);
+      if (b) b.setAttribute("aria-pressed", String(on(k)));
+    });
+    if (narrow.matches) { work.style.gridTemplateColumns = ""; return; }
+    // columns: outline | handle | editor | handle | preview
+    const cols = [
+      !on("outline") ? "0" : (!on("editor") && !on("preview") ? "minmax(0, 1fr)" : "var(--w-outline, 250px)"),
+      "0",
+      on("editor") ? "minmax(0, 1fr)" : "0",
+      "0",
+      !on("preview") ? "0" : (on("editor") ? "var(--w-preview, minmax(0, 1.05fr))" : "minmax(0, 1fr)")
+    ];
+    work.style.gridTemplateColumns = cols.join(" ");
+    work.querySelector('.split[data-split="outline"]').hidden = !on("outline") || (!on("editor") && !on("preview"));
+    work.querySelector('.split[data-split="preview"]').hidden = !on("preview") || !on("editor");
   }
+  function setPanel(k, show) {
+    const hid = { ...(layout.hidden || {}) };
+    if (!show && PANELS.filter(p => p !== k && !hid[p]).length === 0) { toast("At least one panel stays open"); return; }
+    if (show) delete hid[k]; else hid[k] = true;
+    layout.hidden = hid;
+    applyLayout(layout); saveLayout();
+    if (show && k === "preview") renderPreview();
+  }
+  document.querySelectorAll("#panelToggles [data-panel]").forEach(b => b.addEventListener("click", () => setPanel(b.dataset.panel, b.getAttribute("aria-pressed") !== "true")));
+  $("work").addEventListener("click", e => { const b = e.target.closest("[data-hide]"); if (b) setPanel(b.dataset.hide, false); });
+  narrow.addEventListener("change", () => applyLayout(layout));
   let layout = {};
   try { layout = JSON.parse(localStorage.getItem(LAYOUT_KEY) || "{}") || {}; } catch (e) { layout = {}; }
   applyLayout(layout);
