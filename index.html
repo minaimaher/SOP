@@ -20,6 +20,7 @@
       <input type="file" id="importFile" accept=".json,application/json" hidden>
     </div>
     <div class="actions">
+      <button class="btn" id="previewBtn" type="button" title="Open the Word document view in a new tab">Preview</button>
       <button class="btn primary" id="docxBtn" type="button">Download Word (.docx)</button>
       <div id="account"></div>
     </div>
@@ -36,7 +37,9 @@
   </nav>
   <main class="work" id="work" data-view="edit">
     <nav class="pane outline" id="outline" aria-label="Outline"></nav>
+    <div class="split" data-split="outline" role="separator" aria-orientation="vertical" aria-label="Resize outline" tabindex="0" title="Drag to resize · double-click to reset"></div>
     <section class="pane editor" id="editor" aria-label="Editor"></section>
+    <div class="split" data-split="preview" role="separator" aria-orientation="vertical" aria-label="Resize preview" tabindex="0" title="Drag to resize · double-click to reset"></div>
     <section class="pane preview" id="previewPane" aria-label="Preview">
       <div class="pv-bar"><span id="stats"></span><span id="saveState">Loading…</span></div>
       <article class="paper" id="paper"></article>

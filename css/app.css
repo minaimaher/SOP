@@ -64,7 +64,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .tabs { display: none; gap: 4px; padding: 8px 16px 0; }
 .tabs button { flex: 1; padding: 7px; border: 1px solid var(--line); border-bottom: none; border-radius: var(--r) var(--r) 0 0; background: var(--sunk); cursor: pointer; font-weight: 600; }
 .tabs button[aria-selected="true"] { background: var(--panel); color: var(--accent); }
-.work { flex: 1; display: grid; grid-template-columns: 250px minmax(0, 1fr) minmax(0, 1.05fr); min-height: 0; }
+.work { flex: 1; display: grid; grid-template-columns: var(--w-outline, 250px) 0 minmax(0, 1fr) 0 var(--w-preview, minmax(0, 1.05fr)); min-height: 0; }
+/* drag handles between the panes (sit over the pane borders) */
+.split { position: relative; z-index: 3; width: 0; }
+.split::before { content: ""; position: absolute; inset: 0 -5px; cursor: col-resize; }
+.split::after { content: ""; position: absolute; top: 0; bottom: 0; left: -1px; width: 3px; background: transparent; transition: background .15s; pointer-events: none; }
+.split:hover::after, .split:focus-visible::after, .split.dragging::after { background: var(--focus); }
+.split:focus-visible { outline: none; }
+body.resizing { cursor: col-resize; user-select: none; }
+body.resizing iframe, body.resizing .pane { pointer-events: none; }
 .pane { overflow-y: auto; min-width: 0; }
 
 /* outline */
@@ -266,12 +274,12 @@ textarea.inp { resize: vertical; min-height: 34px; display: block; }
 @keyframes flash { from { box-shadow: 0 0 0 4px rgba(31, 111, 178, .55); } to { box-shadow: 0 0 0 4px rgba(31, 111, 178, 0); } }
 
 @media (max-width: 1250px) {
-  .work { grid-template-columns: 220px minmax(0, 1fr) minmax(0, 0.9fr); }
+  .work { grid-template-columns: var(--w-outline, 220px) 0 minmax(0, 1fr) 0 var(--w-preview, minmax(0, 0.9fr)); }
 }
 @media (max-width: 900px) {
   .tabs { display: flex; }
   .work { grid-template-columns: minmax(0, 1fr); }
-  .work > .pane { display: none; }
+  .work > .pane, .work > .split { display: none; }
   .work[data-view="outline"] > .outline, .work[data-view="edit"] > .editor, .work[data-view="preview"] > .preview { display: block; }
   .work[data-view="edit"] > .editor { display: flex; }
   .outline, .editor { border-right: 0; }

@@ -598,6 +598,7 @@
     pv.setAttribute("style", window.SOPPreview.themeVars(d) + `;font-family:'${(d.settings.font || "Calibri").replace(/'/g, "")}', ${d.settings.lang === "ar" ? "'IBM Plex Sans Arabic', " : ""}Carlito, 'IBM Plex Sans', system-ui, sans-serif`);
     pv.innerHTML = window.SOPPreview.render(d);
     restoreRuns(pv);
+    sendPreview();
     $("previewPane").scrollTop = top;
     $("stats").textContent = stats(d);
   }
@@ -931,6 +932,63 @@
       e.target.value = "";
     };
     rd.readAsText(f);
+  });
+
+  /* ---------- preview page (preview.html): the document only, kept in step while it is open ---------- */
+  const pvChannel = "BroadcastChannel" in window ? new BroadcastChannel("sop-preview") : null;
+  let pvListening = false;   // a preview page has asked for a manual; only then are updates sent
+  function sendPreview(id) {
+    const d = state.docs.find(x => x.id === (id || state.current));
+    if (pvChannel && pvListening && d) pvChannel.postMessage({ type: "doc", id: d.id, doc: d });
+  }
+  if (pvChannel) pvChannel.onmessage = e => { if (e.data && e.data.type === "ready") { pvListening = true; sendPreview(e.data.id); } };
+  $("previewBtn").addEventListener("click", () => {
+    if (!pvChannel) { toast("This browser cannot open the preview page. Use the preview pane instead.", 5000); return; }
+    window.open("preview.html?doc=" + encodeURIComponent(doc().id), "sop-preview-" + doc().id);
+  });
+
+  /* ---------- resizable panes ---------- */
+  const LAYOUT_KEY = "sop-builder-layout";
+  const work = $("work");
+  function applyLayout(l) {
+    for (const k of ["outline", "preview"]) {
+      if (l && l[k]) work.style.setProperty("--w-" + k, l[k] + "px"); else work.style.removeProperty("--w-" + k);
+    }
+  }
+  let layout = {};
+  try { layout = JSON.parse(localStorage.getItem(LAYOUT_KEY) || "{}") || {}; } catch (e) { layout = {}; }
+  applyLayout(layout);
+  const saveLayout = () => { try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout)); } catch (e) { /* private window */ } };
+  function setWidth(which, px) {
+    const r = work.getBoundingClientRect();
+    const out = which === "outline" ? 0 : (layout.outline || $("outline").offsetWidth);
+    const max = which === "outline" ? Math.min(520, r.width - 700) : r.width - out - 360;   // keep at least 360px for the editor
+    layout[which] = Math.round(Math.max(which === "outline" ? 160 : 320, Math.min(max, px)));
+    applyLayout(layout);
+  }
+  work.querySelectorAll(".split").forEach(sp => {
+    const which = sp.dataset.split;
+    const widthAt = x => { const r = work.getBoundingClientRect(); return which === "outline" ? x - r.left : r.right - x; };
+    sp.addEventListener("pointerdown", e => {
+      e.preventDefault();
+      sp.setPointerCapture(e.pointerId);
+      sp.classList.add("dragging"); document.body.classList.add("resizing");
+      const move = ev => setWidth(which, widthAt(ev.clientX));
+      const up = () => {
+        sp.classList.remove("dragging"); document.body.classList.remove("resizing");
+        sp.removeEventListener("pointermove", move); sp.removeEventListener("pointerup", up); sp.removeEventListener("pointercancel", up);
+        saveLayout();
+      };
+      sp.addEventListener("pointermove", move); sp.addEventListener("pointerup", up); sp.addEventListener("pointercancel", up);
+    });
+    sp.addEventListener("dblclick", () => { delete layout[which]; applyLayout(layout); saveLayout(); });
+    sp.addEventListener("keydown", e => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      const cur = which === "outline" ? $("outline").offsetWidth : $("previewPane").offsetWidth;
+      const grow = (e.key === "ArrowRight") === (which === "outline");
+      setWidth(which, cur + (grow ? 24 : -24)); saveLayout();
+    });
   });
 
   /* ---------- account ---------- */

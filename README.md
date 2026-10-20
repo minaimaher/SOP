@@ -50,6 +50,11 @@ The preview on the right updates as you type; click anything in it to jump to th
 
 Text formatting inside any field: `**bold**`, `` `code` `` and `[link text](https://example.com)`.
 
+### Preview page and panel sizes
+
+- **Preview** (next to *Download Word*) opens the Word document view of the current manual in a new tab. It updates while you edit in the builder tab, and has a zoom slider and **Print / Save as PDF**. In the Desktop flow column, its Run buttons open the flow the same way the Word file does.
+- **Resize the panels.** Drag the line between the outline and the editor, or between the editor and the preview. You can also select the line with Tab and use the ← → keys. Double-click the line to go back to the default size. The sizes are remembered in this browser.
+
 ### Saving, versions and templates
 
 Everything is in the **Manual ▾** menu next to **New**:
@@ -164,6 +169,7 @@ Then add `<script src="presets/my-sop.js"></script>` to `index.html` next to the
 | `js/preview.js` | Live HTML preview |
 | `js/automation.js` | Power Automate items: request body, desktop run URL, link placeholders, schema, sending |
 | `js/app.js` | Editor |
+| `preview.html`, `js/preview-page.js`, `css/preview-page.css` | The Preview page: the Word document view, updated live from the builder tab |
 | `js/store.js` | Saving: this browser (IndexedDB) or the signed-in user's Firebase account; sign-in |
 | `js/firebase-config.js` | Your Firebase settings (sign-in is off while this is `null`) |
 | `SETUP.md` | Record of the live configuration: GitHub Pages, Firebase project and console settings |

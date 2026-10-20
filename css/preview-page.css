@@ -1,0 +1,24 @@
+/* Preview page (preview.html) */
+html, body.pp { height: 100%; }
+body.pp { margin: 0; display: flex; flex-direction: column; background: var(--pv-bg); }
+.pp-bar { display: flex; align-items: center; gap: 12px 18px; flex-wrap: wrap; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.pp-bar .brand { flex: 1 1 240px; min-width: 0; }
+.pp-bar .brand span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-state { font: 500 11px/1.4 var(--f-mono); color: var(--muted); }
+.pp-zoom { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.pp-zoom input { width: 120px; accent-color: var(--accent); }
+.pp-zoom output { font: 500 12px var(--f-mono); min-width: 4ch; }
+.pp-main { flex: 1; overflow: auto; padding: 20px 16px 48px; }
+.pp .pv-page { cursor: default; }
+.pp .paper { max-width: 860px; }
+/* the cards' Power Automate forms run from the builder; here the document is shown as in Word */
+.pp .pv-auto-form, .pp .pv-auto-actions, .pp .pv-auto-status { display: none; }
+.pp-empty { max-width: 520px; margin: 40px auto; text-align: center; color: var(--muted); }
+@media print {
+  body.pp { display: block; background: #fff; }
+  .pp-bar, .pp-empty { display: none; }
+  .pp-main { overflow: visible; padding: 0; }
+  .pp .paper { zoom: 1 !important; max-width: none; gap: 0; }
+  .pp .pv-page { box-shadow: none; break-after: page; padding: 0; }
+  .pv-flow-run { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

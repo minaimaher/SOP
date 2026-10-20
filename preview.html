@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SOP Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Carlito:wght@400;700&display=swap">
+<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/preview-page.css">
+</head>
+<body class="pp">
+<header class="pp-bar">
+  <div class="brand"><span class="brand-mark">SOP</span><span id="ppName">Preview</span></div>
+  <span class="pp-state" id="ppState" role="status">Waiting for the SOP Builder…</span>
+  <label class="pp-zoom">Zoom <input type="range" id="ppZoom" min="50" max="150" step="10" value="100" aria-label="Zoom"><output id="ppZoomOut">100%</output></label>
+  <button class="btn" type="button" id="ppPrint">Print / Save as PDF</button>
+</header>
+<main class="pp-main" id="ppMain">
+  <article class="paper" id="paper"></article>
+  <p class="pp-empty" id="ppEmpty">Open this page with the <strong>Preview</strong> button in the SOP Builder. It shows the Word document and updates as you edit.</p>
+</main>
+<script src="js/model.js"></script>
+<script src="js/docx-writer.js"></script>
+<script src="js/automation.js"></script>
+<script src="js/preview.js"></script>
+<script src="js/preview-page.js"></script>
+</body>
+</html>
