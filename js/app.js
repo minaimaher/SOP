@@ -43,6 +43,11 @@
   let store = new LocalStore("guest");     // this browser, or the signed-in user's account
   let user = null;
   let prefs = {};
+  let orgs = null;                         // organization calls for the signed-in user
+  let workspace = null;                    // the open organization {id, name, role}; null = the person's own manuals
+  const ROLE_NAME = { owner: "Owner", editor: "Editor", reviewer: "Reviewer", reader: "Reader" };
+  const readOnly = () => !!workspace && !["owner", "editor"].includes(workspace.role);
+  const isOwner = () => !!workspace && workspace.role === "owner";
   let state = { docs: [], current: null };
   let sel = { kind: "settings" };          // {kind:'settings'|'cover'|'section'|'card', sec, card}
   const openSecs = new Set();
@@ -55,7 +60,8 @@
     }
     return docs;
   }
-  const builtIns = () => { const d = M.presets().map(p => M.fromPreset(p.key)); return d.length ? d : [M.newDoc("en")]; };
+  // First visit: one starter manual in the browser's language (the others are under New → Built-in templates)
+  const builtIns = () => { const d = M.fromPreset(/^ar\b/i.test(navigator.language || "") ? "it-ops-ar" : "it-ops-en"); return [d || M.newDoc("en")]; };
 
   // Signed out: manuals saved in this browser. On the first visit, bring over manuals kept by the earlier
   // version of the site (localStorage), otherwise start with the built-in manuals.
@@ -77,11 +83,12 @@
     renderAll();
     setSaveState(savedText());
   }
-  const savedText = () => store.kind === "cloud" ? "Saved to your account" : "Saved in this browser only";
+  const savedText = () => readOnly() ? `View only (${ROLE_NAME[workspace.role]})` : workspace ? "Saved to " + workspace.name : store.kind === "cloud" ? "Saved to your account" : "Saved in this browser only";
   function setSaveState(t) { const n = $("saveState"); if (n) n.textContent = t; }
 
   let saveTimer;
   function save() {
+    if (readOnly()) return;
     const d = doc(); if (d) dirty.add(d.id);
     setSaveState("Saving…");
     clearTimeout(saveTimer);
@@ -174,6 +181,7 @@
     ol.append(h("div", { class: "ol-add" }, addMenu("+ Add part", M.SECTIONS.map(p => ({ label: p.label, run: () => {
       const s = p.make(t(), d); M.normalize({ settings: d.settings, sections: [s] }); d.sections.push(s); select({ kind: "section", sec: s.id }); changed(true);
     } })))));
+    if (readOnly()) ol.querySelectorAll(".ol-add button").forEach(b => b.disabled = true);
     const a = ol.querySelector(".ol-item.active");
     if (a) a.scrollIntoView({ block: "nearest" });
   }
@@ -213,6 +221,12 @@
     else if (sel.kind === "cover") ed.append(...coverEditor(d));
     else if (sel.kind === "section") { const s = findSec(sel.sec); if (s) ed.append(...sectionEditor(d, s)); else { sel = { kind: "settings" }; return renderEditor(); } }
     else if (sel.kind === "card") { const s = findSec(sel.sec), c = findCard(s, sel.card); if (c) ed.append(...cardEditor(d, s, c)); else { sel = { kind: "settings" }; return renderEditor(); } }
+    if (readOnly()) {
+      // view only: the fields stay readable but cannot be changed (the database refuses changes too)
+      ed.querySelectorAll("input, textarea, select, button:not(.card-link):not(.pane-hide), label.btn").forEach(el => { el.disabled = true; el.setAttribute("aria-disabled", "true"); });
+      ed.querySelectorAll("label.btn").forEach(el => el.classList.add("is-disabled"));
+      ed.children[0].after(h("p", { class: "ro-note", role: "note" }, `View only. Your role in ${workspace.name} is ${ROLE_NAME[workspace.role]}; an owner can make you an Editor.`));
+    }
     ed.scrollTop = keep;
   }
   const head = (eyebrow, title, ...right) => h("div", { class: "ed-head" }, h("div", null, h("div", { class: "eyebrow" }, eyebrow), h("h2", { dir: "auto" }, title)), h("div", { class: "ed-head-r" }, ...right));
@@ -825,7 +839,7 @@
     sheet("New manual",
       sub("Start blank"), h("div", { class: "choices" }, blank),
       sub(user ? "My templates" : "My templates (this browser)"), tpl,
-      sub("Built-in manuals"), h("div", { class: "choices" }, M.presets().map(p => choice(p.name, "A full copy of this manual that you can edit.", () => M.fromPreset(p.key)))));
+      sub("Built-in templates"), h("div", { class: "choices" }, M.presets().map(p => choice(p.name, "A starter manual with example parts, cards and tables that you can edit.", () => M.fromPreset(p.key)))));
   }
   $("newBtn").addEventListener("click", openNewSheet);
 
@@ -879,23 +893,33 @@
   /* Manual menu */
   function renderManualMenu() {
     const wrap = $("manualMenu"); wrap.textContent = "";
-    const items = [
-      { group: "This manual", label: "Save version…", run: openVersions },
-      { label: "Version history…", run: openVersions },
-      { label: "Save as template…", run: openSaveTemplate },
-      { label: "Use these settings for my new manuals", run: () => { prefs.defaultSettings = M.clone(doc().settings); store.putPrefs(prefs).then(() => toast("Saved as your default settings. New → Blank manual — my default settings uses them."), e => toast(Auth.message(e), 5000)); } },
-      { label: "Duplicate", run: () => { const c = M.clone(doc()); c.id = M.uid(); c.name = (c.name || "Manual") + " (copy)"; addDoc(c, "Duplicated"); } },
-      { group: "Files", label: "Export config (.sop.json)", run: () => download(slug(doc()) + ".sop.json", new Blob([JSON.stringify(doc(), null, 1)], { type: "application/json" })) },
-      { label: "Import config…", run: () => $("importFile").click() }
-    ];
-    if (user) items.push({ group: "Account", label: "Copy this browser's manuals to my account", run: copyGuestToCloud });
-    items.push({ group: " ", label: "Delete manual…", run: () => {
-      $("confirmText").textContent = `Delete “${doc().name}”${user ? " from your account" : " from this browser"}, with its versions? This cannot be undone.`;
-      $("confirmBar").hidden = false;
-    } });
+    const where = workspace ? workspace.name : user ? "your account" : "this browser";
+    const exportItem = { group: "Files", label: "Export config (.sop.json)", run: () => download(slug(doc()) + ".sop.json", new Blob([JSON.stringify(doc(), null, 1)], { type: "application/json" })) };
+    const copyItem = user ? [{ label: "Copy to another workspace…", run: openCopyTo }] : [];
+    let items;
+    if (readOnly()) items = [{ ...exportItem, group: "This manual" }, ...copyItem];
+    else {
+      items = [
+        { group: "This manual", label: "Save version…", run: openVersions },
+        { label: "Version history…", run: openVersions },
+        { label: "Save as template…", run: openSaveTemplate },
+        { label: "Use these settings for my new manuals", run: () => { prefs.defaultSettings = M.clone(doc().settings); store.putPrefs(prefs).then(() => toast("Saved as your default settings. New → Blank manual — my default settings uses them."), e => toast(Auth.message(e), 5000)); } },
+        { label: "Duplicate", run: () => { const c = M.clone(doc()); c.id = M.uid(); c.name = (c.name || "Manual") + " (copy)"; addDoc(c, "Duplicated"); } },
+        ...copyItem,
+        exportItem,
+        { label: "Import config…", run: () => $("importFile").click() }
+      ];
+      if (user && !workspace) items.push({ group: "Account", label: "Copy this browser's manuals to my account", run: copyGuestToCloud });
+      items.push({ group: " ", label: "Delete manual…", run: () => {
+        $("confirmText").textContent = `Delete “${doc().name}” from ${where}, with its versions? This cannot be undone.`;
+        $("confirmBar").hidden = false;
+      } });
+    }
     const m = addMenu("Manual ▾", items);
     m.querySelector("button").classList.remove("add");
     wrap.append(m);
+    $("newBtn").disabled = readOnly();
+    $("newBtn").title = readOnly() ? "Your role cannot add manuals here" : "";
   }
   $("confirmNo").addEventListener("click", () => $("confirmBar").hidden = true);
   $("confirmYes").addEventListener("click", async () => {
@@ -919,7 +943,7 @@
     try {
       const blob = await window.SOPDocx.build(doc());
       download(slug(doc()) + ".docx", blob);
-      store.putVersion(M.clone(doc()), "Word download", true).catch(e => console.error(e));
+      if (!readOnly()) store.putVersion(M.clone(doc()), "Word download", true).catch(e => console.error(e));
       toast("Word file downloaded. Word asks to update fields on open: choose Yes to fill the page numbers.", 5000);
     } catch (e) { console.error(e); toast("Could not build the Word file: " + e.message, 5000); }
     b.disabled = false; b.textContent = "Download Word (.docx)";
@@ -1031,14 +1055,234 @@
   function renderAccount() {
     const a = $("account"); a.textContent = "";
     if (user) {
-      const m = addMenu(user.email || user.name || "Account", [
-        { group: "Signed in as " + (user.email || user.name), label: "Sign out", run: async () => { await flush(); Auth.signOut(); } }
-      ]);
+      const items = [];
+      if (workspace) items.push({ group: workspace.name, label: isOwner() ? "Organization settings and members…" : "Organization members…", run: openOrgSheet });
+      items.push({ group: "Organizations", label: "New organization…", run: openNewOrg }, { label: "Check for invitations", run: () => checkInvites(true) });
+      if (needsVerify()) items.push({ group: "Email", label: "Verify my email (needed to join organizations)…", run: openVerify });
+      items.push({ group: "Signed in as " + (user.email || user.name), label: "Sign out", run: async () => { await flush(); Auth.signOut(); } });
+      const m = addMenu(user.email || user.name || "Account", items);
       const b = m.querySelector("button"); b.classList.remove("add"); b.classList.add("acct"); b.title = "Signed in";
       a.append(m);
     } else a.append(btn("Sign in", openSignIn));
+    renderWorkspaces();
     renderManualMenu();
   }
+  const needsVerify = () => !!user && !!user.email && !user.emailVerified;
+
+  /* ---------- workspaces: my own manuals, or an organization's ---------- */
+  let orgList = {};
+  async function renderWorkspaces() {
+    const ws = $("wsSelect"), badge = $("roleBadge");
+    ws.hidden = !user; badge.hidden = !workspace;
+    if (workspace) { badge.textContent = ROLE_NAME[workspace.role]; badge.dataset.role = workspace.role; badge.title = "Your role in " + workspace.name; }
+    if (!user) return;
+    ws.innerHTML = `<option value="">My manuals</option>` +
+      Object.entries(orgList).sort((a, b) => a[1].name.localeCompare(b[1].name)).map(([id, o]) => `<option value="${esc(id)}">${esc(o.name)}</option>`).join("") +
+      `<option value="__new">+ New organization…</option>`;
+    ws.value = workspace ? workspace.id : "";
+  }
+  $("wsSelect").addEventListener("change", e => {
+    const v = e.target.value;
+    if (v === "__new") { e.target.value = workspace ? workspace.id : ""; openNewOrg(); return; }
+    switchWorkspace(v || null);
+  });
+
+  async function switchWorkspace(orgId, opts = {}) {
+    await flush();
+    if (!user) return;
+    setSaveState("Opening…");
+    try {
+      let next = null;
+      if (orgId) {
+        next = await orgs.open(orgId);
+        if (!next) {
+          await orgs.forget(orgId).catch(() => {});
+          delete orgList[orgId];
+          toast("You are no longer a member of that organization.", 5000);
+          orgId = null;
+        }
+      }
+      const nextStore = Auth.store(user, orgId);
+      let docs = await loadAll(nextStore);
+      workspace = next; store = nextStore;
+      if (!docs.length) {
+        const d = opts.seed || builtIns()[0];
+        docs = [d];
+        if (!readOnly()) await store.putManual(d);
+      }
+      prefs.workspace = orgId || "";
+      store.putPrefs(prefs).catch(() => {});
+      setDocs(docs);
+      renderAccount();
+      if (next && !opts.quiet) toast(`Opened ${next.name} as ${ROLE_NAME[next.role]}`);
+    } catch (e) {
+      console.error(e);
+      toast("Could not open the workspace: " + Auth.message(e), 6000);
+      renderWorkspaces();
+      setSaveState(savedText());
+    }
+  }
+
+  function openNewOrg() {
+    if (!user) return openSignIn();
+    const name = h("input", { class: "inp", id: "org-name", dir: "auto", placeholder: "e.g. Acme Bank — IT Operations", maxlength: "120" });
+    const bring = h("input", { type: "checkbox", id: "org-bring" }); bring.checked = true;
+    const err = h("p", { class: "auth-err", role: "alert" });
+    const go = h("button", { type: "submit", class: "btn primary" }, "Create organization");
+    const form = h("form", { class: "stack", onsubmit: async e => {
+      e.preventDefault();
+      const n = name.value.trim();
+      if (!n) { err.textContent = "Enter a name."; return; }
+      go.disabled = true; err.textContent = "";
+      try {
+        await flush();
+        const seed = bring.checked ? Object.assign(M.clone(doc()), { id: M.uid() }) : null;
+        const org = await orgs.create(n);
+        orgList[org.id] = { name: org.name };
+        closeSheet();
+        await switchWorkspace(org.id, { seed, quiet: true });
+        toast(`Created ${org.name}. You are its owner. Invite people from the account menu → Organization settings.`, 6000);
+      } catch (ex) { err.textContent = Auth.message(ex); go.disabled = false; }
+    } },
+      field("Organization name", name),
+      h("label", { class: "chk" }, bring, h("span", null, `Start it with a copy of “${doc().name}”`)),
+      h("p", { class: "hint" }, "Manuals in an organization are shared with its members. You decide who can edit and who can only read."),
+      err, h("div", { class: "row-inline" }, go));
+    sheet("New organization", form);
+  }
+
+  async function openOrgSheet() {
+    if (!workspace) return;
+    const org = workspace, owner = isOwner();
+    const body = [];
+    if (owner) {
+      const name = h("input", { class: "inp", id: "org-rename", dir: "auto", value: org.name, maxlength: "120" });
+      body.push(h("div", { class: "row-inline" }, field("Organization name", name), btn("Rename", async () => {
+        const n = name.value.trim(); if (!n || n === org.name) return;
+        try { await orgs.rename(org.id, n); await orgs.remember(org.id, n); org.name = n; orgList[org.id] = { name: n }; renderAccount(); setSaveState(savedText()); toast("Renamed"); }
+        catch (e) { toast(Auth.message(e), 5000); }
+      })));
+    }
+    body.push(h("p", { class: "hint" }, `Your role: ${ROLE_NAME[org.role]}.`));
+    body.push(h("details", { class: "roles-help" }, h("summary", null, "What each role can do"),
+      h("ul", null,
+        h("li", null, h("strong", null, "Owner: "), "everything, plus rename the organization, invite people, change roles and remove members."),
+        h("li", null, h("strong", null, "Editor: "), "create, edit and delete manuals, versions and templates."),
+        h("li", null, h("strong", null, "Reviewer: "), "read everything. (Commenting and approving come with the approval workflow.)"),
+        h("li", null, h("strong", null, "Reader: "), "read and export manuals, and use the Run buttons."))));
+
+    const list = h("div", { class: "member-list" }, h("p", { class: "hint" }, "Loading members…"));
+    body.push(h("h3", { class: "sheet-sub" }, "Members"), list);
+    const roleSelect = (value, onChange, id) => {
+      const sel = h("select", { class: "inp w-role", id, onchange: e => onChange(e.target.value) }, Object.entries(ROLE_NAME).map(([v, l]) => h("option", { value: v }, l)));
+      sel.value = value; return sel;
+    };
+    const drawMembers = async () => {
+      try {
+        const ms = (await orgs.members(org.id)).sort((a, b) => a.email.localeCompare(b.email));
+        list.textContent = "";
+        ms.forEach(m => {
+          const me = m.uid === user.uid;
+          list.append(h("div", { class: "member" },
+            h("span", { class: "member-email", dir: "ltr" }, m.email || m.uid, me ? h("span", { class: "you" }, " (you)") : null),
+            owner && !me ? roleSelect(m.role, async r => {
+              try { await orgs.setRole(org.id, m.uid, r); toast(`${m.email} is now ${ROLE_NAME[r]}`); } catch (e) { toast(Auth.message(e), 5000); drawMembers(); }
+            }, "role-" + m.uid) : h("span", { class: "role-badge", "data-role": m.role }, ROLE_NAME[m.role] || m.role),
+            owner && !me ? inlineConfirm("Remove", async () => { try { await orgs.removeMember(org.id, m.uid); toast("Removed " + m.email); drawMembers(); } catch (e) { toast(Auth.message(e), 5000); } }) : null));
+        });
+      } catch (e) { list.textContent = ""; list.append(h("p", { class: "hint" }, Auth.message(e))); }
+    };
+    drawMembers();
+
+    if (owner) {
+      const email = h("input", { class: "inp", type: "email", id: "invite-email", dir: "ltr", placeholder: "name@company.com", autocomplete: "off" });
+      let role = "editor";
+      const err = h("p", { class: "auth-err", role: "alert" });
+      const pending = h("div", { class: "member-list" });
+      const drawInvites = async () => {
+        try {
+          const inv = await orgs.invitesFor(org.id);
+          pending.textContent = "";
+          if (!inv.length) pending.append(h("p", { class: "hint" }, "No pending invitations."));
+          inv.forEach(i => pending.append(h("div", { class: "member" },
+            h("span", { class: "member-email", dir: "ltr" }, i.email), h("span", { class: "role-badge", "data-role": i.role }, ROLE_NAME[i.role]),
+            btn("Copy message", () => copyInvite(i)), inlineConfirm("Revoke", async () => { await orgs.revoke(org.id, i.email).catch(e => toast(Auth.message(e), 5000)); drawInvites(); }))));
+        } catch (e) { pending.textContent = ""; pending.append(h("p", { class: "hint" }, Auth.message(e))); }
+      };
+      const form = h("form", { class: "row-inline invite-form", onsubmit: async e => {
+        e.preventDefault();
+        const em = email.value.trim().toLowerCase();
+        if (!/^[^@\s]+@[^@\s]+$/.test(em)) { err.textContent = "Enter a valid email address."; return; }
+        err.textContent = "";
+        try { await orgs.invite(org, em, role); email.value = ""; drawInvites(); copyInvite({ email: em, role, orgName: org.name }); }
+        catch (ex) { err.textContent = Auth.message(ex); }
+      } }, field("Invite by email", email), field("Role", roleSelect(role, r => { role = r; }, "invite-role")), h("button", { type: "submit", class: "btn primary" }, "Invite"));
+      body.push(h("h3", { class: "sheet-sub" }, "Invite people"), form, err,
+        h("p", { class: "hint" }, "The website does not send email. After inviting, send the person the copied message. They sign in with that email address (Google, or a verified email and password) and accept the invitation at the top of the page."),
+        h("h3", { class: "sheet-sub" }, "Pending invitations"), pending);
+      drawInvites();
+    } else {
+      body.push(h("div", { class: "row-inline" }, inlineConfirm("Leave organization", async () => {
+        try { await flush(); await orgs.leave(org.id); delete orgList[org.id]; closeSheet(); await switchWorkspace(null); toast("You left " + org.name); }
+        catch (e) { toast(Auth.message(e), 5000); }
+      })));
+    }
+    sheet(org.name, ...body);
+  }
+  function copyInvite(i) {
+    const site = location.href.split(/[?#]/)[0].replace(/index\.html$/, "");
+    const text = `You're invited to join “${i.orgName}” in SOP Builder as ${ROLE_NAME[i.role]}.\n\n1. Open ${site}\n2. Sign in with ${i.email} (Google, or create an account with this email and verify it).\n3. Choose Accept in the invitation at the top of the page.`;
+    navigator.clipboard.writeText(text).then(() => toast("Invitation sent in SOP Builder. A message for " + i.email + " is copied — paste it into an email or chat.", 6000), () => toast("Invitation saved. Tell " + i.email + " to sign in to " + site + " to accept.", 6000));
+  }
+
+  /* invitations for the signed-in person */
+  async function checkInvites(manual) {
+    const bar = $("inviteBar"); bar.textContent = "";
+    if (!user || !orgs) return;
+    if (needsVerify()) { if (manual) openVerify(); return; }
+    let list = [];
+    try { list = await orgs.myInvites(); } catch (e) { if (manual) toast(Auth.message(e), 5000); return; }
+    if (!list.length) { if (manual) toast("No invitations for " + user.email); return; }
+    list.forEach(inv => {
+      const row = h("div", { class: "notice invite" },
+        h("p", null, h("strong", null, inv.orgName), ` invited you to join as ${ROLE_NAME[inv.role] || inv.role}` + (inv.invitedBy ? ` (from ${inv.invitedBy}).` : ".")),
+        btn("Accept", async () => {
+          try { const org = await orgs.accept(inv); orgList[org.id] = { name: org.name }; row.remove(); await switchWorkspace(org.id); }
+          catch (e) { toast(Auth.message(e), 6000); }
+        }, "primary"),
+        btn("Decline", async () => { try { await orgs.decline(inv); row.remove(); } catch (e) { toast(Auth.message(e), 5000); } }));
+      bar.append(row);
+    });
+  }
+
+  function openVerify() {
+    const msg = h("p", { class: "hint" });
+    sheet("Verify your email",
+      h("p", null, `To join an organization, confirm that ${user.email} is yours. We send a link to that address.`),
+      h("div", { class: "row-inline" },
+        btn("Send the link", () => Auth.sendVerification().then(() => { msg.textContent = "Sent. Open the email, click the link, then come back and choose I've verified."; }, e => { msg.textContent = Auth.message(e); }), "primary"),
+        btn("I've verified", async () => {
+          try {
+            user = await Auth.refreshUser();
+            if (user.emailVerified) { closeSheet(); renderAccount(); toast("Email verified"); checkInvites(true); }
+            else msg.textContent = "Not verified yet. Click the link in the email first (check the spam folder).";
+          } catch (e) { msg.textContent = Auth.message(e); }
+        })), msg);
+  }
+
+  function openCopyTo() {
+    const d = doc();
+    const targets = [["", "My manuals"], ...Object.entries(orgList).map(([id, o]) => [id, o.name])].filter(([id]) => id !== (workspace ? workspace.id : ""));
+    if (!targets.length) { toast("Create or join an organization first"); return; }
+    sheet(`Copy “${d.name}” to…`, h("div", { class: "choices" }, targets.map(([id, name]) => h("button", { type: "button", class: "choice", onclick: async () => {
+      try {
+        const c = M.clone(d); c.id = M.uid();
+        await Auth.store(user, id || null).putManual(c);
+        closeSheet(); toast(`Copied to ${name}. Switch workspace to open it.`, 5000);
+      } catch (e) { toast(Auth.message(e), 6000); }
+    } }, h("strong", { dir: "auto" }, name), h("span", null, id ? "Organization" : "Your own manuals")))));
+  }
+
   function openSignIn() {
     if (!Auth.configured()) {
       sheet("Sign in", h("p", null, "Sign-in is not set up for this website yet. Until it is, your manuals, templates and versions are saved in this browser only."),
@@ -1057,14 +1301,14 @@
       field("Email", email), field("Password", pw), err,
       h("div", { class: "row-inline" },
         h("button", { type: "submit", class: "btn primary" }, "Sign in"),
-        btn("Create account", () => run(() => Auth.signUp(email.value.trim(), pw.value), "Account created. Your manuals now save to your account.")),
+        btn("Create account", () => run(async () => { await Auth.signUp(email.value.trim(), pw.value); Auth.sendVerification().catch(() => {}); }, "Account created. We sent a link to verify your email; you need it to join organizations.")),
         btn("Forgot password?", () => {
           if (!email.value.trim()) { err.textContent = "Enter your email first, then choose Forgot password."; return; }
           Auth.reset(email.value.trim()).then(() => { err.textContent = ""; toast("Password reset email sent to " + email.value.trim(), 5000); }, e => { err.textContent = Auth.message(e); });
         }, "link")),
       h("div", { class: "or" }, h("span", null, "or")),
       btn("Continue with Google", () => run(() => Auth.google()), "google"));
-    sheet("Sign in", h("p", { class: "hint" }, "Sign in to keep your manuals, templates, versions and default settings in your account and open them on any computer."), form);
+    sheet("Sign in", h("p", { class: "hint" }, "Sign in to keep your manuals in your account, open them on any computer, and share them with your organization."), form);
   }
 
   async function copyGuestToCloud() {
@@ -1083,34 +1327,42 @@
   async function onUser(u) {
     if (!u && !user) { renderAccount(); return; }     // still signed out
     await flush();
-    user = u;
+    user = u; workspace = null; orgList = {}; $("inviteBar").textContent = "";
     if (u) {
       setSaveState("Loading your manuals…");
       store = Auth.store(u);
+      orgs = Auth.orgs(u);
       try {
         prefs = await store.getPrefs();
-        let docs = await loadAll(store);
-        if (!docs.length) {
-          // first sign-in: start the account with the manuals and templates from this browser
-          const guest = new LocalStore("guest");
-          docs = await loadAll(guest).catch(() => []);
-          if (!docs.length) docs = builtIns();
-          for (const d of docs) await store.putManual(d);
-          for (const t of await guest.listTemplates().catch(() => [])) await store.putTemplate(await guest.getTemplate(t.id), t.name);
-          toast(`Welcome. ${docs.length} manual${docs.length === 1 ? " was" : "s were"} added to your account.`, 5000);
+        orgList = await orgs.myOrgs().catch(() => ({}));
+        if (prefs.workspace && orgList[prefs.workspace]) await switchWorkspace(prefs.workspace, { quiet: true });
+        if (!workspace) {
+          let docs = await loadAll(store);
+          if (!docs.length) {
+            // first sign-in: start the account with the manuals and templates from this browser
+            const guest = new LocalStore("guest");
+            docs = await loadAll(guest).catch(() => []);
+            if (!docs.length) docs = builtIns();
+            for (const d of docs) await store.putManual(d);
+            for (const t of await guest.listTemplates().catch(() => [])) await store.putTemplate(await guest.getTemplate(t.id), t.name);
+            toast(`Welcome. ${docs.length} manual${docs.length === 1 ? " was" : "s were"} added to your account.`, 5000);
+          }
+          setDocs(docs);
         }
-        setDocs(docs);
       } catch (e) {
         console.error(e);
         toast("Could not open your account: " + Auth.message(e), 7000);
-        store = new LocalStore("guest"); user = null;
+        store = new LocalStore("guest"); user = null; orgs = null; workspace = null;
         await bootGuest();
       }
-    } else {
-      store = new LocalStore("guest");
-      await bootGuest();
-      toast("Signed out. You are now editing the manuals saved in this browser.", 4000);
+      renderAccount();
+      checkInvites(false);
+      return;
     }
+    orgs = null;
+    store = new LocalStore("guest");
+    await bootGuest();
+    toast("Signed out. You are now editing the manuals saved in this browser.", 4000);
     renderAccount();
   }
 

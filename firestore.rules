@@ -1,9 +1,84 @@
 rules_version = '2';
-// Each signed-in user can read and write only their own manuals, versions, templates and settings.
+// SOP Builder security rules. Publish in Firebase: Firestore Database → Rules.
+//
+// users/{uid}/…            only that person
+// orgs/{orgId}             members read; owners rename
+// orgs/{orgId}/members     members read; owners add (by invitation), change roles and remove others;
+//                          anyone may leave unless they are an owner. Owners cannot change or remove
+//                          themselves, so an organization always keeps at least one owner.
+// orgs/{orgId}/manuals…    members read; owners and editors write
+// invites/{orgId}:{email}  owners create and revoke; the invited person (verified email) reads and answers
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function myEmail() { return request.auth.token.email.lower(); }
+    function verified() { return signedIn() && request.auth.token.get('email_verified', false) == true; }
+    function orgPath(org) { return /databases/$(database)/documents/orgs/$(org); }
+    function memberPath(org) { return /databases/$(database)/documents/orgs/$(org)/members/$(request.auth.uid); }
+    function invitePath(org) { return /databases/$(database)/documents/invites/$(org + ':' + myEmail()); }
+    function isMember(org) { return signedIn() && exists(memberPath(org)); }
+    function role(org) { return get(memberPath(org)).data.role; }
+    function isOwner(org) { return isMember(org) && role(org) == 'owner'; }
+    function canEdit(org) { return isMember(org) && role(org) in ['owner', 'editor']; }
+    function validRole(r) { return r in ['owner', 'editor', 'reviewer', 'reader']; }
+    function validName(n) { return n is string && n.size() > 0 && n.size() <= 120; }
+
     match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if signedIn() && request.auth.uid == userId;
+    }
+
+    match /orgs/{org} {
+      allow read: if isMember(org);
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['name', 'createdBy', 'createdAt'])
+        && request.resource.data.createdBy == request.auth.uid
+        && validName(request.resource.data.name);
+      allow update: if isOwner(org)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
+        && validName(request.resource.data.name);
+      allow delete: if false;
+
+      match /members/{uid} {
+        allow read: if isMember(org);
+        allow create: if signedIn() && uid == request.auth.uid
+          && request.resource.data.keys().hasOnly(['role', 'email', 'joinedAt'])
+          && validRole(request.resource.data.role)
+          && (
+            // the founder, in the same write as the new organization
+            (!exists(orgPath(org)) && getAfter(orgPath(org)).data.createdBy == request.auth.uid
+              && request.resource.data.role == 'owner')
+            // or someone answering an invitation, with the role they were invited to
+            || (verified() && exists(invitePath(org))
+              && get(invitePath(org)).data.role == request.resource.data.role
+              && request.resource.data.email == myEmail())
+          );
+        allow update: if isOwner(org) && uid != request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
+          && validRole(request.resource.data.role);
+        allow delete: if (isOwner(org) && uid != request.auth.uid)
+          || (signedIn() && uid == request.auth.uid && resource.data.role != 'owner');
+      }
+
+      match /manuals/{rest=**} {
+        allow read: if isMember(org);
+        allow write: if canEdit(org);
+      }
+      match /templates/{rest=**} {
+        allow read: if isMember(org);
+        allow write: if canEdit(org);
+      }
+    }
+
+    match /invites/{id} {
+      allow read: if (verified() && resource.data.email == myEmail()) || isOwner(resource.data.orgId);
+      allow create, update: if isOwner(request.resource.data.orgId)
+        && id == request.resource.data.orgId + ':' + request.resource.data.email
+        && request.resource.data.keys().hasOnly(['orgId', 'orgName', 'email', 'role', 'invitedBy', 'invitedAt'])
+        && request.resource.data.email == request.resource.data.email.lower()
+        && request.resource.data.email.matches('^[^@\\s]+@[^@\\s]+$')
+        && validRole(request.resource.data.role);
+      allow delete: if isOwner(resource.data.orgId) || (verified() && resource.data.email == myEmail());
     }
   }
 }

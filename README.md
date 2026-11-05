@@ -1,11 +1,14 @@
 # SOP Builder
 
-A website for building Standard Operating Procedure manuals and downloading them as Word documents. You configure the document (language, numbering scheme, card fields, colours, header and footer), add parts, procedure cards and content items, and the site builds a `.docx` with the same layout as **IT-CRM-SOP-001 — Dynamics 365 CRM Production SOP v1.4**.
+A website for building Standard Operating Procedure manuals and downloading them as Word documents. You configure the document (language, numbering scheme, card fields, colours, header and footer), add parts, procedure cards and content items, and the site builds a formatted `.docx` in English (left to right) or Arabic (right to left).
 
-Both versions of that manual are included as presets, so you can start from the real document and change it:
+Teams work together in **organizations**: shared manuals, with roles that decide who can edit and who can only read.
 
-- **SDB CRM Production SOP v1.4 (Arabic)**: right to left
-- **SDB CRM Production SOP v1.4 (English)**: left to right
+Starter templates, each in English and Arabic (**New → Built-in templates**):
+
+- **IT operations manual:** governance, incidents, change, operations, service requests, a fix and request catalog with Desktop flow Run buttons, and appendices
+- **Incident response runbook:** severity, escalation, runbook, problem management
+- **Service request catalog:** request procedure, ticket types and the request catalog with Run buttons
 
 ## Use it
 
@@ -120,6 +123,29 @@ If the browser can't read the reply (blocked by CORS), the page says it could no
 
 > **Security:** anyone who has a cloud flow's HTTP URL can start the flow, because the link contains its own key. The link is saved with the manual, in this browser or your account, not on the public site. It does travel with an exported `.sop.json` file, and with the Word file if you show it there. Add checks in the flow too, such as allowed callers or a check on the ticket number.
 
+## Organizations and roles
+
+Sign in, then use the workspace list at the top left. **My manuals** holds your own manuals; each organization holds manuals shared with its members.
+
+- **Create one:** workspace list → **+ New organization…**. You become its Owner. It can start with a copy of the manual you have open.
+- **Invite people:** account menu → **Organization settings and members…** → enter an email and a role → **Invite**.
+  - The site does not send email itself. It copies a short message for you to send.
+  - The person signs in with that email address and chooses **Accept** in the bar at the top of the page.
+  - With email and password they must verify their email first (account menu → **Verify my email**). Google accounts are already verified.
+- **Roles:**
+
+| Role | Can |
+|---|---|
+| Owner | Everything an Editor can, plus rename the organization, invite people, change roles and remove members |
+| Editor | Create, edit and delete manuals, versions and templates |
+| Reviewer | Read everything. Commenting and approval come with the approval workflow |
+| Reader | Read and export manuals, and use the Run buttons |
+
+- **Leaving and owners:** Readers, Reviewers and Editors can leave from the same screen. Owners cannot remove themselves or change their own role, so every organization keeps at least one owner.
+- **Moving manuals:** **Manual → Copy to another workspace…** copies the open manual between your own manuals and your organizations.
+
+Readers and Reviewers see the editor in view-only mode. The database rules refuse their changes even if the page is bypassed.
+
 ## Set up sign-in (Firebase)
 
 Sign-in stays off until the site has Firebase settings. Firebase's free plan is enough. You only do this once.
@@ -130,7 +156,7 @@ Sign-in stays off until the site has Firebase settings. Firebase's free plan is 
    - Optionally, also turn on **Google**.
 3. **Authentication → Settings → Authorized domains**: add `minaimaher.github.io`. Also add any other address the site runs on.
 4. **Build → Firestore Database → Create database**: choose **production mode** and the location closest to your users.
-5. **Firestore Database → Rules**: replace the rules with the contents of [`firestore.rules`](firestore.rules) and choose **Publish**. These rules let each user read and write only their own data.
+5. **Firestore Database → Rules**: replace the rules with the contents of [`firestore.rules`](firestore.rules) and choose **Publish**. These rules keep each person's own manuals private and enforce organization roles. **Publish them again whenever `firestore.rules` changes.**
 6. **Project settings (⚙) → General → Your apps → Web (`</>`)**:
    - Register an app; you don't need Firebase Hosting.
    - Copy the `firebaseConfig` values into [`js/firebase-config.js`](js/firebase-config.js) in place of `null`.
@@ -157,7 +183,7 @@ It needs Python 3 with `lxml` (installed with `python-docx`).
 python3 tools/import_docx.py "My SOP.docx" presets/my-sop.js --name "My SOP" --key my-sop
 ```
 
-Then add `<script src="presets/my-sop.js"></script>` to `index.html` next to the other presets. It will appear under **New**.
+Then add `<script src="presets/my-sop.js"></script>` to `index.html` after `js/templates.js`. It appears under **New → Built-in templates**. Only do this for content that may be public: everything in this repository is published with the site.
 
 ## Files
 
@@ -166,16 +192,18 @@ Then add `<script src="presets/my-sop.js"></script>` to `index.html` next to the
 | `index.html` | The page |
 | `css/app.css` | Editor and preview styles |
 | `js/model.js` | Document model, card numbering and the library of parts, cards and items |
+| `js/templates.js` | The built-in starter templates (English and Arabic) |
 | `js/docx-writer.js` | Builds the Word document (WordprocessingML, zipped with JSZip) |
 | `js/preview.js` | Live HTML preview |
 | `js/automation.js` | Power Automate items: request body, desktop run URL, link placeholders, schema, sending |
 | `js/app.js` | Editor |
 | `preview.html`, `js/preview-page.js`, `css/preview-page.css` | The Preview page: the Word document view, updated live from the builder tab |
-| `js/store.js` | Saving: this browser (IndexedDB) or the signed-in user's Firebase account; sign-in |
+| `js/store.js` | Saving: this browser (IndexedDB), the signed-in user's account, or an organization; organizations, members and invitations; sign-in |
 | `js/firebase-config.js` | Your Firebase settings (sign-in is off while this is `null`) |
 | `SETUP.md` | Record of the live configuration: GitHub Pages, Firebase project and console settings |
-| `firestore.rules` | Firestore security rules: each user can access only their own data |
-| `presets/` | The Arabic and English CRM manuals as starting documents |
+| `firestore.rules` | Firestore security rules: private personal data and organization roles |
+| `firebase.json` | Firebase settings for the rules, the local emulators and optional Firebase Hosting |
+| `tests/firestore-rules.test.js` | Checks the security rules against the Firebase emulator (see the file for how to run it) |
 | `tools/bump-version.sh` | Run before each release: adds a new `?v=` to the file links so browsers load the new version at once |
 | `tools/import_docx.py` | Converts an existing Word manual into a preset |
 | `vendor/jszip.min.js` | JSZip 3.10.1 (MIT), bundled so the site works offline |

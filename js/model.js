@@ -135,6 +135,9 @@
     return { type: "table", columns: [...cols], rows: clone(rows), ...(extra || {}) };
   }
 
+  // Catalog tables get the Power Automate Desktop column (a Run button per row)
+  const flowCol = t => ({ flowColumn: true, flowTitle: t.auto.flowCol });
+
   /* ---------- items you can add inside a part or a card ---------- */
   const BLOCKS = [
     { key: "heading3", group: "Text", label: "Sub-heading", make: t => ({ type: "heading", level: 3, text: t.subheading }) },
@@ -156,8 +159,8 @@
     { key: "closureIncident", group: "Tables", label: "Closure template fields", make: t => table(t, "closureIncident") },
     { key: "problems", group: "Tables", label: "Problem register", make: t => table(t, "problems") },
     { key: "moduleRegister", group: "Tables", label: "Module register", make: t => table(t, "moduleRegister") },
-    { key: "fixCatalog", group: "Tables", label: "Production fix catalog (wide)", make: t => table(t, "fixCatalog") },
-    { key: "srvCatalog", group: "Tables", label: "Service request catalog (wide)", make: t => table(t, "srvCatalog") },
+    { key: "fixCatalog", group: "Tables", label: "Production fix catalog (wide)", make: t => table(t, "fixCatalog", flowCol(t)) },
+    { key: "srvCatalog", group: "Tables", label: "Service request catalog (wide)", make: t => table(t, "srvCatalog", flowCol(t)) },
     { key: "fieldValue", group: "Tables", label: "Document control fields", make: t => table(t, "fieldValue") },
     { key: "revisions", group: "Tables", label: "Revision history", make: t => table(t, "revisions") },
     { key: "glossary", group: "Tables", label: "Glossary", make: t => table(t, "glossary") },
@@ -198,8 +201,8 @@
       { type: "heading", level: 2, text: t.howToRead },
       { type: "table", columns: [...t.fieldMeaning], rows: (doc.settings.cardFields || []).map((f, i) => [f.label, t.meanings[i] || ""]) }] }) },
     { key: "sec-catalog", label: "Catalog (landscape pages)", make: t => ({ type: "section", title: t === T.ar ? "إصلاحات الإنتاج وطلبات الخدمة" : "Production fixes and service requests", pageBreak: true, landscape: true, blocks: [
-      { type: "heading", level: 2, text: t === T.ar ? "فهرس الإصلاحات" : "Fix index" }, table(t, "fixCatalog"),
-      { type: "heading", level: 2, text: t === T.ar ? "كتالوج طلبات الخدمة" : "Service request catalog" }, table(t, "srvCatalog")] }) },
+      { type: "heading", level: 2, text: t === T.ar ? "فهرس الإصلاحات" : "Fix index" }, table(t, "fixCatalog", flowCol(t)),
+      { type: "heading", level: 2, text: t === T.ar ? "كتالوج طلبات الخدمة" : "Service request catalog" }, table(t, "srvCatalog", flowCol(t))] }) },
     { key: "sec-appendix", label: "Appendices", make: t => ({ type: "section", title: t.appendices, pageBreak: true, landscape: false, blocks: [
       { type: "heading", level: 2, text: t === T.ar ? "المصطلحات" : "Glossary" }, table(t, "glossary"),
       { type: "heading", level: 2, text: t === T.ar ? "جهات الاتصال" : "Contacts" }, table(t, "contacts")] }) }

@@ -2,7 +2,7 @@
  *
  * Two stores share one interface:
  *   LocalStore  – this browser only (IndexedDB), used when signed out.
- *   CloudStore  – Firebase Firestore, per signed-in user.
+ *   CloudStore  – Firebase Firestore: the signed-in user's own manuals (users/{uid}) or an organization's (orgs/{orgId}).
  *
  * Interface (all async):
  *   listManuals() → [{id, name, updatedAt}]      getManual(id) → doc      putManual(doc)      deleteManual(id)
@@ -82,10 +82,11 @@
   // Firestore documents are limited to 1 MiB, so each manual is stored as text split into chunks.
   const CHUNK = 300000;
   class CloudStore {
-    constructor(fb, user) {
-      this.kind = "cloud"; this.user = user;
+    constructor(fb, user, orgId) {
+      this.kind = "cloud"; this.user = user; this.orgId = orgId || null;
       this.db = fb.firestore();
-      this.root = this.db.collection("users").doc(user.uid);
+      this.userRoot = this.db.collection("users").doc(user.uid);
+      this.root = orgId ? this.db.collection("orgs").doc(orgId) : this.userRoot;
       this.written = new Map(); // path → last written chunk strings, to skip unchanged chunks
     }
     async writeChunked(ref, meta, obj) {
@@ -147,8 +148,69 @@
     async putTemplate(doc, name) { const meta = { name: name || doc.name || "", savedAt: now() }; const id = uid(); await this.writeChunked(this.root.collection("templates").doc(id), meta, doc); return { id, ...meta }; }
     deleteTemplate(id) { return this.deleteChunked(this.root.collection("templates").doc(id)); }
 
-    async getPrefs() { const s = await this.root.collection("meta").doc("prefs").get(); return s.exists ? JSON.parse(s.data().json || "{}") : {}; }
-    putPrefs(p) { return this.root.collection("meta").doc("prefs").set({ json: JSON.stringify(p) }); }
+    // settings stay with the person, whichever workspace is open
+    async getPrefs() { const s = await this.userRoot.collection("meta").doc("prefs").get(); return s.exists ? JSON.parse(s.data().json || "{}") : {}; }
+    putPrefs(p) { return this.userRoot.collection("meta").doc("prefs").set({ json: JSON.stringify(p) }); }
+  }
+
+  /* ================= organizations =================
+   * orgs/{orgId}                      { name, createdBy, createdAt }
+   * orgs/{orgId}/members/{uid}        { role, email, joinedAt }      role: owner | editor | reviewer | reader
+   * orgs/{orgId}/manuals|templates/…  same layout as a person's own manuals
+   * invites/{orgId}:{email}           { orgId, orgName, email, role, invitedBy, invitedAt }
+   * users/{uid}/meta/orgs             { json: {orgId: {name}} }   the person's list of workspaces
+   * firestore.rules enforces who may do what; these calls only ask.
+   */
+  const ROLES = ["owner", "editor", "reviewer", "reader"];
+  const lowerEmail = e => String(e || "").trim().toLowerCase();
+  class Orgs {
+    constructor(fb, user) { this.fb = fb; this.db = fb.firestore(); this.user = user; }
+    listRef() { return this.db.collection("users").doc(this.user.uid).collection("meta").doc("orgs"); }
+    async myOrgs() { const s = await this.listRef().get(); return s.exists ? JSON.parse(s.data().json || "{}") : {}; }
+    async remember(orgId, name) { const all = await this.myOrgs(); all[orgId] = { name }; await this.listRef().set({ json: JSON.stringify(all) }); }
+    async forget(orgId) { const all = await this.myOrgs(); delete all[orgId]; await this.listRef().set({ json: JSON.stringify(all) }); }
+
+    async create(name) {
+      const org = this.db.collection("orgs").doc();
+      const b = this.db.batch();
+      b.set(org, { name, createdBy: this.user.uid, createdAt: now() });
+      b.set(org.collection("members").doc(this.user.uid), { role: "owner", email: lowerEmail(this.user.email), joinedAt: now() });
+      await b.commit();
+      await this.remember(org.id, name);
+      return { id: org.id, name, role: "owner" };
+    }
+    async open(orgId) {
+      const org = this.db.collection("orgs").doc(orgId);
+      const [o, m] = await Promise.all([org.get(), org.collection("members").doc(this.user.uid).get()]);
+      if (!o.exists || !m.exists) return null;
+      return { id: orgId, name: o.data().name, role: m.data().role };
+    }
+    rename(orgId, name) { return this.db.collection("orgs").doc(orgId).update({ name }); }
+    async members(orgId) { const q = await this.db.collection("orgs").doc(orgId).collection("members").get(); return q.docs.map(d => ({ uid: d.id, ...d.data() })); }
+    setRole(orgId, uid, role) { return this.db.collection("orgs").doc(orgId).collection("members").doc(uid).update({ role }); }
+    removeMember(orgId, uid) { return this.db.collection("orgs").doc(orgId).collection("members").doc(uid).delete(); }
+    async leave(orgId) { await this.removeMember(orgId, this.user.uid); await this.forget(orgId); }
+
+    inviteRef(orgId, email) { return this.db.collection("invites").doc(orgId + ":" + lowerEmail(email)); }
+    invite(org, email, role) {
+      return this.inviteRef(org.id, email).set({ orgId: org.id, orgName: org.name, email: lowerEmail(email), role, invitedBy: lowerEmail(this.user.email), invitedAt: now() });
+    }
+    async invitesFor(orgId) { const q = await this.db.collection("invites").where("orgId", "==", orgId).get(); return q.docs.map(d => d.data()); }
+    revoke(orgId, email) { return this.inviteRef(orgId, email).delete(); }
+    async myInvites() {
+      if (!this.user.email) return [];
+      const q = await this.db.collection("invites").where("email", "==", lowerEmail(this.user.email)).get();
+      return q.docs.map(d => d.data());
+    }
+    async accept(inv) {
+      const b = this.db.batch();
+      b.set(this.db.collection("orgs").doc(inv.orgId).collection("members").doc(this.user.uid), { role: inv.role, email: lowerEmail(this.user.email), joinedAt: now() });
+      b.delete(this.inviteRef(inv.orgId, inv.email));
+      await b.commit();
+      await this.remember(inv.orgId, inv.orgName);
+      return { id: inv.orgId, name: inv.orgName, role: inv.role };
+    }
+    decline(inv) { return this.inviteRef(inv.orgId, inv.email).delete(); }
   }
 
   /* ================= sign-in ================= */
@@ -170,17 +232,27 @@
         await Promise.all([loadScript(SDK + "firebase-auth-compat.js"), loadScript(SDK + "firebase-firestore-compat.js")]);
       }
       const fb = global.firebase;
-      if (!fb.apps.length) fb.initializeApp(global.SOP_FIREBASE_CONFIG);
+      if (!fb.apps.length) {
+        fb.initializeApp(global.SOP_FIREBASE_CONFIG);
+        // local testing only: window.SOP_FIREBASE_EMULATOR = {auth: "http://127.0.0.1:9099", firestore: ["127.0.0.1", 8080]}
+        const emu = global.SOP_FIREBASE_EMULATOR;
+        if (emu) { fb.auth().useEmulator(emu.auth); fb.firestore().useEmulator(...emu.firestore); }
+      }
       Auth.fb = fb;
-      fb.auth().onAuthStateChanged(u => onUser(u ? { uid: u.uid, email: u.email || "", name: u.displayName || "" } : null));
+      fb.auth().onAuthStateChanged(u => onUser(u ? Auth.userInfo(u) : null));
       return true;
     },
     signIn: (email, pw) => Auth.fb.auth().signInWithEmailAndPassword(email, pw),
     signUp: (email, pw) => Auth.fb.auth().createUserWithEmailAndPassword(email, pw),
     reset: email => Auth.fb.auth().sendPasswordResetEmail(email),
     google: () => Auth.fb.auth().signInWithPopup(new Auth.fb.auth.GoogleAuthProvider()),
+    userInfo: u => ({ uid: u.uid, email: u.email || "", name: u.displayName || "", emailVerified: !!u.emailVerified }),
     signOut: () => Auth.fb.auth().signOut(),
-    store: user => new CloudStore(Auth.fb, user),
+    sendVerification: () => Auth.fb.auth().currentUser.sendEmailVerification(),
+    // after the person clicks the link in the email: reload, and refresh the token so the database sees it
+    async refreshUser() { const u = Auth.fb.auth().currentUser; await u.reload(); await u.getIdToken(true); return Auth.userInfo(Auth.fb.auth().currentUser); },
+    store: (user, orgId) => new CloudStore(Auth.fb, user, orgId),
+    orgs: user => new Orgs(Auth.fb, user),
     message(e) {
       const code = (e && e.code) || "";
       return ({
@@ -197,10 +269,11 @@
         "auth/unauthorized-domain": "This website address is not allowed to sign in yet. Add it under Authentication → Settings → Authorized domains in Firebase.",
         "auth/operation-not-allowed": "This sign-in method is turned off. Turn it on under Authentication → Sign-in method in Firebase.",
         "auth/network-request-failed": "Could not reach the sign-in service. Check your connection.",
-        "permission-denied": "The database refused access. Publish the security rules from firestore.rules in Firebase."
+        "permission-denied": "The database refused this. You may not have the role it needs, or the security rules from firestore.rules are not published in Firebase yet.",
+        "auth/requires-recent-login": "Sign in again, then try once more."
       })[code] || (e && e.message) || "Something went wrong.";
     }
   };
 
-  global.SOPStore = { LocalStore, CloudStore, Auth };
+  global.SOPStore = { LocalStore, CloudStore, Orgs, ROLES, Auth };
 })(window);

@@ -30,26 +30,21 @@ The web app config only identifies the project; it is not a secret. Access to da
 | Where in the console | Setting |
 |---|---|
 | Authentication → Sign-in method | **Email/Password** on; **Google** on if wanted |
+| Authentication → Templates → Email address verification | Default template is fine. People need it to join organizations with email and password |
 | Authentication → Settings → Authorized domains | `minaimaher.github.io` (plus `localhost` and the Firebase defaults) |
 | Firestore Database | Created in production mode |
 | Firestore Database → Rules | Contents of [`firestore.rules`](firestore.rules), published |
 
 ### Firestore rules
 
-Each signed-in user can read and write only their own data:
+[`firestore.rules`](firestore.rules) is the source of truth. **Copy it into Firestore Database → Rules and choose Publish every time it changes.** Organizations do not work until the current version is published.
 
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-  }
-}
-```
+In short:
+- `users/{uid}/…` is readable and writable only by that person.
+- Organization data is readable by members. Owners and Editors write manuals and templates.
+- Only owners manage members and invitations. People join only through an invitation, with a verified email.
 
-If the rules are changed in the console, update `firestore.rules` in this repository to match.
+`tests/firestore-rules.test.js` checks these rules against the Firebase emulator (53 checks).
 
 ### Where data is stored
 
@@ -60,6 +55,11 @@ If the rules are changed in the console, update `firestore.rules` in this reposi
 | `users/{uid}/manuals/{manualId}/versions/{versionId}` (+ `/chunks/{n}`) | Saved versions; the newest 50 are kept |
 | `users/{uid}/templates/{templateId}` (+ `/chunks/{n}`) | Saved templates |
 | `users/{uid}/meta/prefs` | Default settings for new manuals and the last opened manual |
+| `users/{uid}/meta/orgs` | The organizations the person belongs to (for the workspace list) |
+| `orgs/{orgId}` | Organization name, who created it, when |
+| `orgs/{orgId}/members/{uid}` | Role (`owner`, `editor`, `reviewer`, `reader`), email, join date |
+| `orgs/{orgId}/manuals/…`, `orgs/{orgId}/templates/…` | Same layout as a person's own manuals and templates |
+| `invites/{orgId}:{email}` | Pending invitations: organization, email, role, who invited |
 
 Signed-out visitors' work is saved only in their own browser (IndexedDB database `sop-builder`).
 

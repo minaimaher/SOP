@@ -7,13 +7,15 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Carlito:wght@400;700&display=swap">
-<link rel="stylesheet" href="css/app.css?v=202610202015">
+<link rel="stylesheet" href="css/app.css?v=202611051103">
 </head>
 <body>
 <div class="app">
   <header class="bar">
     <div class="brand"><span class="brand-mark">SOP</span><span>SOP Builder</span></div>
     <div class="lib">
+      <select id="wsSelect" class="inp ws" aria-label="Workspace" hidden></select>
+      <span class="role-badge" id="roleBadge" hidden></span>
       <select id="docSelect" class="inp" aria-label="Open manual"></select>
       <button class="btn" id="newBtn" type="button">New</button>
       <div id="manualMenu"></div>
@@ -28,6 +30,7 @@
       <div id="account"></div>
     </div>
   </header>
+  <div id="inviteBar"></div>
   <div class="notice" id="confirmBar" hidden>
     <p id="confirmText"></p>
     <button class="btn danger solid" id="confirmYes" type="button">Delete</button>
@@ -58,15 +61,14 @@
 </div>
 <div class="toast" id="toast" hidden role="status"></div>
 
-<script src="vendor/jszip.min.js?v=202610202015"></script>
-<script src="presets/sdb-crm-sop-ar.js?v=202610202015"></script>
-<script src="presets/sdb-crm-sop-en.js?v=202610202015"></script>
-<script src="js/model.js?v=202610202015"></script>
-<script src="js/docx-writer.js?v=202610202015"></script>
-<script src="js/automation.js?v=202610202015"></script>
-<script src="js/preview.js?v=202610202015"></script>
-<script src="js/firebase-config.js?v=202610202015"></script>
-<script src="js/store.js?v=202610202015"></script>
-<script src="js/app.js?v=202610202015"></script>
+<script src="vendor/jszip.min.js?v=202611051103"></script>
+<script src="js/model.js?v=202611051103"></script>
+<script src="js/templates.js?v=202611051103"></script>
+<script src="js/docx-writer.js?v=202611051103"></script>
+<script src="js/automation.js?v=202611051103"></script>
+<script src="js/preview.js?v=202611051103"></script>
+<script src="js/firebase-config.js?v=202611051103"></script>
+<script src="js/store.js?v=202611051103"></script>
+<script src="js/app.js?v=202611051103"></script>
 </body>
 </html>
